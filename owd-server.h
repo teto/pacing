@@ -16,8 +16,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef UDP_ECHO_SERVER_H2
-#define UDP_ECHO_SERVER_H2
+#ifndef UDP_OWD_ECHO_SERVER_H
+#define UDP_OWD_ECHO_SERVER_H
 
 #include "ns3/application.h"
 #include "ns3/event-id.h"
@@ -30,27 +30,23 @@
 //class Socket;
 //class Packet;
 
-#define NUM_INTERFACES 2
-
-/**
- * \ingroup applications
- * \defgroup udpecho UdpEcho
- */
+#include "config.h"
 
 /**
  * \ingroup udpecho
  * \brief A Udp Echo server
  *
  * Every packet received is sent back.
+ * it
  */
-class UdpEchoServer : public Application
+class UdpEchoServer : public ns3::Application
 {
 public:
   /**
    * \brief Get the type ID.
    * \return the object TypeId
    */
-  static TypeId GetTypeId (void);
+//  static TypeId GetTypeId (void);
   UdpEchoServer ();
   virtual ~UdpEchoServer ();
 
@@ -69,10 +65,10 @@ private:
    *
    * \param socket the socket the packet was received to.
    */
-  void HandleRead (Ptr<Socket> socket);
+  void HandleRead (ns3::Ptr<ns3::Socket> socket);
 
   uint16_t m_port; //!< Port on which we listen for incoming packets.
-  Ptr<Socket> m_socket[NUM_INTERFACES]; //!< IPv4 Socket
+  ns3::Ptr<ns3::Socket> m_socket[NUM_INTERFACES]; //!< IPv4 Socket
 
   // TODO create structure that records seq_nb.
 

@@ -16,13 +16,12 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
- * Author: Amine Ismail <amine.ismail@sophia.inria.fr>
- *                      <amine.ismail@udcast.com>
+ * Author:
  *
  */
 
-#ifndef UDP_CLIENT_H2
-#define UDP_CLIENT_H2
+#ifndef UDP_OWD_CLIENT_H
+#define UDP_OWD_CLIENT_H
 
 #include "ns3/application.h"
 #include "ns3/event-id.h"
@@ -31,46 +30,30 @@
 #include "ns3/socket.h"
 #include "ns3/packet.h"
 
-use namespace ns3;
+#include "config.h"
+
+using namespace ns3;
 
 /**
- * \ingroup udpclientserver
- * \class UdpClient
+ * \ingroup OWDHostserver
+ * \class OWDHost
  * \brief A Udp client. Sends UDP packet carrying sequence number and time stamp
  *  in their payloads
+
+ It should change mode automatically
  *
  */
-class UdpClient : public Application
+class OWDHost : public Application
 {
 public:
-  /**
-   * \brief Get the type ID.
-   * \return the object TypeId
-   */
-//  static TypeId GetTypeId (void);
 
-  UdpClient ();
+  OWDHost ();
 
-  virtual ~UdpClient ();
+  virtual ~OWDHost ();
 
-  /**
-   * \brief set the remote address and port
-   * \param ip remote IPv4 address
-   * \param port remote port
-   */
-  void SetRemote (Ipv4Address ip, uint16_t port);
-  /**
-   * \brief set the remote address and port
-   * \param ip remote IPv6 address
-   * \param port remote port
-   */
-  void SetRemote (Ipv6Address ip, uint16_t port);
-  /**
-   * \brief set the remote address and port
-   * \param ip remote IP address
-   * \param port remote port
-   */
-  void SetRemote (Address ip, uint16_t port);
+//  void SetRemote ( uint16_t id, Ipv4);
+  void
+  HandleRecv( Ptr<Socket> packet );
 
 protected:
   virtual void DoDispose (void);
@@ -80,19 +63,19 @@ private:
   virtual void StartApplication (void);
   virtual void StopApplication (void);
 
-  /**
-   * \brief Send a packet
-   */
   void Send (void);
 
   uint32_t m_count; //!< Maximum number of packets the application will send
+
+  // maybe this should go away
   Time m_interval; //!< Packet inter-send time
   uint32_t m_size; //!< Size of the sent packet (including the SeqTsHeader)
 
   uint32_t m_sent; //!< Counter for sent packets
-  Ptr<Socket> m_socket[NUM_INTERFACES]; //!< Socket
-  Address m_peerAddress; //!< Remote peer address
-  uint16_t m_peerPort; //!< Remote peer port
+  std::vector<Ptr<Socket> > m_sockets;
+//  [NUM_INTERFACES];      //!< Socket
+  Ipv4Address m_peerAddress[NUM_INTERFACES]; //!< Remote peer address
+//  uint16_t m_peerPort; //!< Remote peer port
   EventId m_sendEvent; //!< Event to send the next packet
 
 };

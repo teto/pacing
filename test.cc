@@ -22,7 +22,7 @@ Je dois utiliser le udp-echo-server qui retourne tous les paquets qu'on lui envo
 
 #include "ns3/core-module.h"
 
-#include "ns3/test.h"
+//#include "ns3/test.h"
 #include "ns3/socket-factory.h"
 #include "ns3/udp-socket-factory.h"
 #include "ns3/simulator.h"
@@ -30,7 +30,9 @@ Je dois utiliser le udp-echo-server qui retourne tous les paquets qu'on lui envo
 #include "ns3/simple-net-device.h"
 #include "ns3/drop-tail-queue.h"
 #include "ns3/socket.h"
-#include "ns3/point-to-point.h"
+#include "ns3/point-to-point-net-device.h"
+#include "ns3/point-to-point-helper.h"
+#include "ns3/ipv4-address-helper.h"
 
 #include "ns3/log.h"
 #include "ns3/node.h"
@@ -49,16 +51,16 @@ Je dois utiliser le udp-echo-server qui retourne tous les paquets qu'on lui envo
 #include "ns3/ipv6-list-routing.h"
 #include "ns3/ipv6-static-routing.h"
 
+
+#include "owd-client.h"
+
 #include <string>
 #include <limits>
 
 using namespace ns3;
 
 
-enum ProbingMode {
-BOOTSTRAP,  //!< Just getting RTTs
-ESTIMATING_OWD  //!< Different techniques might follow
-};
+NS_LOG_COMPONENT_DEFINE ("OwdMainTest");
 
 static void
 AddInternetStack (Ptr<Node> node)
@@ -85,7 +87,7 @@ AddInternetStack (Ptr<Node> node)
   node->AggregateObject (tcp);
 }
 
-
+#if 0
 class DifferentiatedPacingForOWDEstimation
 //: public TestCase
 {
@@ -102,9 +104,9 @@ public:
   void ReceivePkt (Ptr<Socket> socket);
   void ReceivePkt2 (Ptr<Socket> socket);
 
-  Ptr<Node> m_m_rxNode; //
+  Ptr<Node> m_rxNode; //
 
-  Ptr<Node> m_m_txNode ;
+  Ptr<Node> m_txNode ;
   bool m_expectingAllAcks;  //!<
 
 protected:
@@ -130,7 +132,7 @@ DifferentiatedPacingForOWDEstimation::~DifferentiatedPacingForOWDEstimation ()
   NS_LOG_FUNCTION(this);
 }
 
-#if 0
+
 void
 DifferentiatedPacingForOWDEstimation::ReceivePacket (Ptr<Socket> socket, Ptr<Packet> packet, const Address &from)
 {
@@ -178,7 +180,7 @@ DifferentiatedPacingForOWDEstimation::SendData (Ptr<Socket> socket, std::string 
                                   &DifferentiatedPacingForOWDEstimation::DoSendData, this, socket, to);
   Simulator::Run ();
 }
-#endif
+
 
 
 void
@@ -189,7 +191,7 @@ DifferentiatedPacingForOWDEstimation::SetupSimulation()
 
   // Receiver Node
   m_m_rxNode = CreateObject<Node> ();
-  AddInternetStack (m_m_rxNode);
+  AddInternetStack (m_rxNode);
   // TODO replace by P2P links
   Ptr<SimpleNetDevice> rxDev1, rxDev2;
   { // first interface
@@ -326,13 +328,86 @@ DifferentiatedPacingForOWDEstimation::DoRun (void)
 
 
 }
+#endif
+
+
+/**
+Asymetric/symetric etc...
+
+1st topology:
+
+    Link A
+  __________
+ /          \
+C            S
+ \__________/
+    Link B
+
+**/
+void
+CreateTopology(Ptr<Node> c,Ptr<Node> s)
+{
+  // TODO
+  // Should set data rates on netdevices to simulate asymetric links
+  PointToPointHelper p2phelper;
+  Ipv4AddressHelper iphelper;
+  iphelper.SetBase("10.0.0.1", Ipv4Mask("255.255.255.0") );
+
+//  helper.SetChannelAttribute()
+//  helper.SetDeviceAttribute()
+//CreateObject
+//CreateObject
+
+// csma.SetChannelAttribute ("DataRate", DataRateValue (5000000));
+  p2phelper.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (20)));
+
+  // create devices & link A
+  NetDeviceContainer devices1 = p2phelper.Install(c,s);
+  iphelper.Assign( devices1 );
+
+  // create devices & link B
+  NetDeviceContainer devices2 = p2phelper.Install(c,s);
+  iphelper.SetBase("20.0.0.1", Ipv4Mask("255.255.255.0") );
+  iphelper.Assign( devices2 );
+
+//  Ptr<Ipv4> ipv4 = m_txNode ->GetObject<Ipv4> ();
+//  uint32_t netdev_idx = ipv4->AddInterface (devices1. );
+//  Ipv4InterfaceAddress ipv4Addr = Ipv4InterfaceAddress (Ipv4Address ("10.0.1.2"), Ipv4Mask (0xffff0000U));
+//  ipv4->AddAddress (netdev_idx, ipv4Addr);
+//  ipv4->SetUp (netdev_idx);
+
+  // Here i should set ips to
+
+
+// NetDeviceContainer ndc = csma.Install (net);
+
+}
 
 
 int main()
 {
-  DifferentiatedPacingForOWDEstimation test;
-  test.SetupSimulation();
-  test.DoRun();
+  // TODO command line helper to choose parameters (topology, transfer intervals, etc...)
 
-  Simulator::Destroy ();
+//  DifferentiatedPacingForOWDEstimation test;
+//  test.SetupSimulation();
+//  test.DoRun();
+  Ptr<Node> txNode = CreateObject<Node> ();
+  Ptr<Node> rxNode = CreateObject<Node> ();
+
+  AddInternetStack (txNode);
+  AddInternetStack (rxNode);
+
+  // Then Create topology, then install application
+  CreateTopology(txNode,rxNode);
+
+
+  // Then install application
+  Ptr<OWDHost> client = CreateObject<OWDHost>();
+  txNode->AddApplication( client );
+//  client.Install(txNode);
+
+//  Simulator::Destroy ();
+  Time::SetResolution (Time::NS);
+  NS_LOG_UNCOND("test");
+  return 0;
 }

@@ -30,12 +30,13 @@
 #include "ns3/packet.h"
 #include "ns3/uinteger.h"
 
-#include "echo-server.h"
+#include "owd-server.h"
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE ("OWDEchoServerApplication")
-  ;
+NS_LOG_COMPONENT_DEFINE ("OWDEchoServerApplication");
+
+#if 0
 //NS_OBJECT_ENSURE_REGISTERED (UdpEchoServer)
 //  ;
 //
@@ -61,7 +62,7 @@ UdpEchoServer::UdpEchoServer ()
 UdpEchoServer::~UdpEchoServer()
 {
   NS_LOG_FUNCTION (this);
-  m_socket = 0;
+//  m_socket = 0;
 //  m_socket6 = 0;
 }
 
@@ -159,3 +160,4 @@ UdpEchoServer::HandleRead (Ptr<Socket> socket)
 
     }
 }
+  #endif
