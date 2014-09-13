@@ -55,6 +55,12 @@ public:
   void
   HandleRecv( Ptr<Socket> packet );
 
+  void
+  SetPeer( Ptr<Node> peer )
+  {
+    m_peer = peer;
+  }
+
 protected:
   virtual void DoDispose (void);
 
@@ -73,8 +79,9 @@ private:
 
   uint32_t m_sent; //!< Counter for sent packets
   std::vector<Ptr<Socket> > m_sockets;
+  Ptr<Node> m_peer;
 //  [NUM_INTERFACES];      //!< Socket
-  Ipv4Address m_peerAddress[NUM_INTERFACES]; //!< Remote peer address
+//  Ipv4Address m_peerAddresses[NUM_INTERFACES]; //!< Remote peer address
 //  uint16_t m_peerPort; //!< Remote peer port
   EventId m_sendEvent; //!< Event to send the next packet
 

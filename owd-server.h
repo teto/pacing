@@ -27,19 +27,14 @@
 #include "ns3/packet.h"
 
 
-//class Socket;
-//class Packet;
-
-#include "config.h"
+using namespace ns3;
 
 /**
- * \ingroup udpecho
- * \brief A Udp Echo server
  *
  * Every packet received is sent back.
  * it
  */
-class UdpEchoServer : public ns3::Application
+class OwdServer : public ns3::Application
 {
 public:
   /**
@@ -47,8 +42,8 @@ public:
    * \return the object TypeId
    */
 //  static TypeId GetTypeId (void);
-  UdpEchoServer ();
-  virtual ~UdpEchoServer ();
+  OwdServer ();
+  virtual ~OwdServer ();
 
 protected:
   virtual void DoDispose (void);
@@ -68,7 +63,7 @@ private:
   void HandleRead (ns3::Ptr<ns3::Socket> socket);
 
   uint16_t m_port; //!< Port on which we listen for incoming packets.
-  ns3::Ptr<ns3::Socket> m_socket[NUM_INTERFACES]; //!< IPv4 Socket
+  std::vector< Ptr<Socket> > m_sockets; //!< IPv4 Socket
 
   // TODO create structure that records seq_nb.
 

@@ -29,37 +29,25 @@
 #include "ns3/socket-factory.h"
 #include "ns3/packet.h"
 #include "ns3/uinteger.h"
+#include "ns3/ipv4.h"
 
 #include "owd-server.h"
+#include "config.h"
+
 
 using namespace ns3;
 
-NS_LOG_COMPONENT_DEFINE ("OWDEchoServerApplication");
+NS_LOG_COMPONENT_DEFINE ("OWDServer");
 
-#if 0
-//NS_OBJECT_ENSURE_REGISTERED (UdpEchoServer)
-//  ;
-//
-//TypeId
-//UdpEchoServer::GetTypeId (void)
-//{
-//  static TypeId tid = TypeId ("ns3::UdpEchoServer")
-//    .SetParent<Application> ()
-//    .AddConstructor<UdpEchoServer> ()
-//    .AddAttribute ("Port", "Port on which we listen for incoming packets.",
-//                   UintegerValue (9),
-//                   MakeUintegerAccessor (&UdpEchoServer::m_port),
-//                   MakeUintegerChecker<uint16_t> ())
-//  ;
-//  return tid;
-//}
 
-UdpEchoServer::UdpEchoServer ()
+//NS_OBJECT_ENSURE_REGISTERED (OwdServer)
+
+OwdServer::OwdServer ()
 {
   NS_LOG_FUNCTION (this);
 }
 
-UdpEchoServer::~UdpEchoServer()
+OwdServer::~OwdServer()
 {
   NS_LOG_FUNCTION (this);
 //  m_socket = 0;
@@ -67,71 +55,69 @@ UdpEchoServer::~UdpEchoServer()
 }
 
 void
-UdpEchoServer::DoDispose (void)
+OwdServer::DoDispose (void)
 {
   NS_LOG_FUNCTION (this);
   Application::DoDispose ();
 }
 
 void
-UdpEchoServer::StartApplication (void)
+OwdServer::StartApplication (void)
 {
   NS_LOG_FUNCTION (this);
 
-  for( int i = 0; i < NUM_INTERFACES; ++i)
+  //! count the number of IPs of the node, then it create & bind one socket per IP
+  Ptr<Ipv4> ip = GetNode()->GetObject<Ipv4>();
+
+
+  uint32_t nIfs = ip->GetNInterfaces ();
+  NS_LOG_INFO("node" << GetNode() << " has " << nIfs << " interfaces ");
+
+
+  //! for each if create a socket
+  // assumes one IP per interface
+  for(uint32_t i = 0; i < nIfs ; ++i )
   {
-    Ptr<Socket> sock = m_sockets[i];
+    NS_ASSERT_MSG(ip->GetNAddresses(i ) == 1, "For now assume 1 ip per interface");
 
-    if (sock == 0)
-      {
-        TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
-        sock = Socket::CreateSocket (GetNode (), tid);
-        //TODO Should not be any IPv4, must bind to different devices
-        InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), m_port);
-        sock->Bind (local);
-//        if (addressUtils::IsMulticast (m_local))
-//          {
-//            Ptr<UdpSocket> udpSocket = DynamicCast<UdpSocket> (sock);
-//            if (udpSocket)
-//              {
-//                // equivalent to setsockopt (MCAST_JOIN_GROUP)
-//                udpSocket->MulticastJoinGroup (0, m_local);
-//              }
-//            else
-//              {
-//                NS_FATAL_ERROR ("Error: Failed to join multicast group");
-//              }
-//          }
-      }
+    // skip loopback
+    if( ip->GetAddress(i,0).GetLocal() == Ipv4Address::GetLoopback()) continue;
 
-      sock->SetRecvCallback (MakeCallback (&UdpEchoServer::HandleRead, this));
+      TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
+      Ptr<Socket> sock = Socket::CreateSocket (GetNode (), tid);
+      // should bind to a specific ip
+      // 0 or 1 ?
+      sock->Bind ( InetSocketAddress ( ip->GetAddress(i,0).GetLocal(), CFG_PORT) );
 
-      m_socket[i] = sock;
+      // Should be
+      sock->SetRecvCallback (MakeCallback( &OwdServer::HandleRead, this));
+
+      m_sockets.push_back(sock);
   }
 
 
 }
 
 void
-UdpEchoServer::StopApplication ()
+OwdServer::StopApplication ()
 {
   NS_LOG_FUNCTION (this);
 
-  for( int i = 0; i < NUM_INTERFACES; ++i)
+  for(std::vector< Ptr<Socket> >::iterator i = m_sockets.begin(); i != m_sockets.end() ; ++i)
   {
-    Ptr<Socket> sock = m_socket[i];
-    if (sock != 0)
-      {
-        sock->Close ();
-        sock->SetRecvCallback (MakeNullCallback<void, Ptr<Socket> > ());
-      }
+    (*i)->Close();
+    Ptr<Socket> sock = *i;
+    sock->Close ();
+    sock->SetRecvCallback (MakeNullCallback<void, Ptr<Socket> > ());
+
   }
+
 }
 
 
 
 void
-UdpEchoServer::HandleRead (Ptr<Socket> socket)
+OwdServer::HandleRead (Ptr<Socket> socket)
 {
   NS_LOG_FUNCTION (this << socket);
 
@@ -142,7 +128,7 @@ UdpEchoServer::HandleRead (Ptr<Socket> socket)
   while ((packet = socket->RecvFrom (from)))
     {
 
-      NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s server received " << packet->GetSize () << " bytes from " <<
+      NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server received " << packet->GetSize () << " bytes from " <<
                    InetSocketAddress::ConvertFrom (from).GetIpv4 () << " port " <<
                    InetSocketAddress::ConvertFrom (from).GetPort ());
 
@@ -151,13 +137,12 @@ UdpEchoServer::HandleRead (Ptr<Socket> socket)
 
       // TODO send lowest received packet
       // change seq paquet
-      NS_LOG_LOGIC ("Echoing packet");
+//      NS_LOG_LOGIC ("Echoing packet");
       socket->SendTo (packet, 0, from);
 
-      NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s server sent " << packet->GetSize () << " bytes to " <<
+      NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server sent " << packet->GetSize () << " bytes to " <<
                    InetSocketAddress::ConvertFrom (from).GetIpv4 () << " port " <<
                    InetSocketAddress::ConvertFrom (from).GetPort ());
 
     }
 }
-  #endif
