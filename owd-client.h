@@ -29,10 +29,23 @@
 #include "ns3/ipv4-address.h"
 #include "ns3/socket.h"
 #include "ns3/packet.h"
+#include "ns3/nstime.h"
+#include "ns3/tcp-tx-buffer.h"
+#include "ns3/traced-value.h"
 
 #include "config.h"
 
 using namespace ns3;
+
+//
+typedef struct _rttSample
+{
+Time real[];      //!< computed thanks to ns3 clock synchronization
+Time estimated[]; //!< estimated via our technique
+Time halfRTT[];   //!< legacy method of dividing RTT by half
+} RttSample;
+
+//std::vector<fastestSocket>
 
 /**
  * \ingroup OWDHostserver
@@ -61,31 +74,77 @@ public:
     m_peer = peer;
   }
 
+  /**
+  We suppose there is no packet loss
+  **/
+  void SamplingRTTRecv(Ptr<Socket> packet );
+  void EstimateOWDRecv(Ptr<Socket> packet );
+
 protected:
   virtual void DoDispose (void);
 
 private:
+  void ChangeMode(Mode mode);
 
   virtual void StartApplication (void);
   virtual void StopApplication (void);
 
-  void Send (void);
+  /** To sample RTTs, we just send timestampped packets in parallel on each *subflow*
+  When they are echoed back we register the RTT in a tracedvalue
+
+  The seq nb allows to distinguish which packets arrived first
+  The seq nb are sent increasing according to the sorting order of the sockets, ie:
+  seq will be sent on socket 0 and seq+1 on socket 1
+
+  **/
+  void SampleRTTStart (void);
+
+  /** Socket must exist (else asserts)
+  **/
+  int GetIndexOfSocket(Ptr<Socket> sock);
+
+
+  /**
+  Will schedule different sends on different subflows in order to compute
+  **/
+  void EstimateOWDSend ( );
+
+  /** Utility function used by both modes.
+  Send a timestampped packet with "seqNb" on socket "sock"
+  \param seqNb sequence number to send
+  **/
+  void Send(Ptr<Socket> sock, uint32_t seqNb);
 
   uint32_t m_count; //!< Maximum number of packets the application will send
+  TcpTxBuffer m_txBuffer; //!< Just used to see what packets.
+
+  //! How many packets we can send in parallel
+  uint32_t m_probesInARound;
+
+  //! Sampled RTTs
+  TracedValue<RttSample> m_RttSamples[10]; //!< one tracedvalue per socket (supports max 10 sockets)
+
+
+  Mode m_currentMode; //!< decide what actions to take
+
+  uint32_t m_sampleRTTmaxRounds;  //!< How many times we sample the RTT before changing mode
+  uint32_t m_round;   //!< nb of rounds already accomplished
+
 
   // maybe this should go away
-  Time m_interval; //!< Packet inter-send time
+//  Time m_interval; //!< Packet inter-send time
+
   uint32_t m_size; //!< Size of the sent packet (including the SeqTsHeader)
 
-  uint32_t m_sent; //!< Counter for sent packets
+  uint32_t m_inflight; //!< Nb of packets in flight. Starts at 0
   std::vector<Ptr<Socket> > m_sockets;
   Ptr<Node> m_peer;
-//  [NUM_INTERFACES];      //!< Socket
-//  Ipv4Address m_peerAddresses[NUM_INTERFACES]; //!< Remote peer address
-//  uint16_t m_peerPort; //!< Remote peer port
+
   EventId m_sendEvent; //!< Event to send the next packet
 
+//  std::vector<Time> m_rttBuffer;  //!<
+  std::vector< std::pair<int,int> > m_forwardOrder; //!< socket no/position registered by packets of nb(sockets) records
 };
 
 
-#endif /* UDP_CLIENT_H */
+#endif

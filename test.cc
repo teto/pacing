@@ -53,6 +53,7 @@ Je dois utiliser le udp-echo-server qui retourne tous les paquets qu'on lui envo
 #include "ns3/ipv4-static-routing.h"
 #include "ns3/ipv6-list-routing.h"
 #include "ns3/ipv6-static-routing.h"
+#include "ns3/gnuplot-helper.h"
 
 
 #include "owd-client.h"
@@ -66,31 +67,6 @@ using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE ("OwdMainTest");
 #if 0
-static void
-AddInternetStack (Ptr<Node> node)
-{
-  //ARP
-  Ptr<ArpL3Protocol> arp = CreateObject<ArpL3Protocol> ();
-  node->AggregateObject (arp);
-  //IPV4
-  Ptr<Ipv4L3Protocol> ipv4 = CreateObject<Ipv4L3Protocol> ();
-  //Routing for Ipv4
-  Ptr<Ipv4ListRouting> ipv4Routing = CreateObject<Ipv4ListRouting> ();
-  ipv4->SetRoutingProtocol (ipv4Routing);
-  Ptr<Ipv4StaticRouting> ipv4staticRouting = CreateObject<Ipv4StaticRouting> ();
-  ipv4Routing->AddRoutingProtocol (ipv4staticRouting, 0);
-  node->AggregateObject (ipv4);
-  //ICMP
-  Ptr<Icmpv4L4Protocol> icmp = CreateObject<Icmpv4L4Protocol> ();
-  node->AggregateObject (icmp);
-  //UDP
-  Ptr<UdpL4Protocol> udp = CreateObject<UdpL4Protocol> ();
-  node->AggregateObject (udp);
-  //TCP
-  Ptr<TcpL4Protocol> tcp = CreateObject<TcpL4Protocol> ();
-  node->AggregateObject (tcp);
-}
-
 
 class DifferentiatedPacingForOWDEstimation
 //: public TestCase
@@ -122,9 +98,6 @@ protected:
 };
 
 
-
-
-
 DifferentiatedPacingForOWDEstimation::DifferentiatedPacingForOWDEstimation ()
 {
   NS_LOG_FUNCTION(this);
@@ -136,202 +109,6 @@ DifferentiatedPacingForOWDEstimation::~DifferentiatedPacingForOWDEstimation ()
   NS_LOG_FUNCTION(this);
 }
 
-
-void
-DifferentiatedPacingForOWDEstimation::ReceivePacket (Ptr<Socket> socket, Ptr<Packet> packet, const Address &from)
-{
-  m_receivedPacket = packet;
-}
-
-void
-DifferentiatedPacingForOWDEstimation::ReceivePacket2 (Ptr<Socket> socket, Ptr<Packet> packet, const Address &from)
-{
-  m_receivedPacket2 = packet;
-}
-
-void
-DifferentiatedPacingForOWDEstimation::ReceivePkt (Ptr<Socket> socket)
-{
-  uint32_t availableData;
-  availableData = socket->GetRxAvailable ();
-  m_receivedPacket = socket->Recv (std::numeric_limits<uint32_t>::max (), 0);
-  NS_ASSERT (availableData == m_receivedPacket->GetSize ());
-}
-
-void
-DifferentiatedPacingForOWDEstimation::ReceivePkt2 (Ptr<Socket> socket)
-{
-  uint32_t availableData;
-  availableData = socket->GetRxAvailable ();
-  m_receivedPacket2 = socket->Recv (std::numeric_limits<uint32_t>::max (), 0);
-  NS_ASSERT (availableData == m_receivedPacket2->GetSize ());
-}
-
-void
-DifferentiatedPacingForOWDEstimation::DoSendData (Ptr<Socket> socket, std::string to)
-{
-  Address realTo = InetSocketAddress (Ipv4Address (to.c_str ()), 1234);
-  NS_TEST_EXPECT_MSG_EQ (socket->SendTo (Create<Packet> (123), 0, realTo),
-                         123, "100");
-}
-
-void
-DifferentiatedPacingForOWDEstimation::SendData (Ptr<Socket> socket, std::string to)
-{
-  m_receivedPacket = Create<Packet> ();
-  m_receivedPacket2 = Create<Packet> ();
-  Simulator::ScheduleWithContext (socket->GetNode ()->GetId (), Seconds (0),
-                                  &DifferentiatedPacingForOWDEstimation::DoSendData, this, socket, to);
-  Simulator::Run ();
-}
-
-
-
-void
-DifferentiatedPacingForOWDEstimation::SetupSimulation()
-{
-  //!
-  // Create topology
-
-  // Receiver Node
-  m_m_rxNode = CreateObject<Node> ();
-  AddInternetStack (m_rxNode);
-  // TODO replace by P2P links
-  Ptr<SimpleNetDevice> rxDev1, rxDev2;
-  { // first interface
-    rxDev1 = CreateObject<SimpleNetDevice> ();
-    rxDev1->SetAddress (Mac48Address::ConvertFrom (Mac48Address::Allocate ()));
-    m_rxNode->AddDevice (rxDev1);
-    Ptr<Ipv4> ipv4 = m_rxNode->GetObject<Ipv4> ();
-    uint32_t netdev_idx = ipv4->AddInterface (rxDev1);
-    Ipv4InterfaceAddress ipv4Addr = Ipv4InterfaceAddress (Ipv4Address ("10.0.0.1"), Ipv4Mask (0xffff0000U));
-    ipv4->AddAddress (netdev_idx, ipv4Addr);
-    ipv4->SetUp (netdev_idx);
-  }
-
-  { // second interface
-    rxDev2 = CreateObject<SimpleNetDevice> ();
-    rxDev2->SetAddress (Mac48Address::ConvertFrom (Mac48Address::Allocate ()));
-    m_rxNode->AddDevice (rxDev2);
-    Ptr<Ipv4> ipv4 = m_rxNode->GetObject<Ipv4> ();
-    uint32_t netdev_idx = ipv4->AddInterface (rxDev2);
-    Ipv4InterfaceAddress ipv4Addr = Ipv4InterfaceAddress (Ipv4Address ("10.0.1.1"), Ipv4Mask (0xffff0000U));
-    ipv4->AddAddress (netdev_idx, ipv4Addr);
-    ipv4->SetUp (netdev_idx);
-  }
-
-  // Sender Node
-  m_m_txNode  = CreateObject<Node> ();
-  AddInternetStack (m_m_txNode  );
-  Ptr<SimpleNetDevice> txDev1;
-  {
-    txDev1 = CreateObject<SimpleNetDevice> ();
-    txDev1->SetAddress (Mac48Address::ConvertFrom (Mac48Address::Allocate ()));
-    m_txNode ->AddDevice (txDev1);
-    Ptr<Ipv4> ipv4 = m_txNode ->GetObject<Ipv4> ();
-    uint32_t netdev_idx = ipv4->AddInterface (txDev1);
-    Ipv4InterfaceAddress ipv4Addr = Ipv4InterfaceAddress (Ipv4Address ("10.0.0.2"), Ipv4Mask (0xffff0000U));
-    ipv4->AddAddress (netdev_idx, ipv4Addr);
-    ipv4->SetUp (netdev_idx);
-  }
-  Ptr<SimpleNetDevice> txDev2;
-  {
-    txDev2 = CreateObject<SimpleNetDevice> ();
-    txDev2->SetAddress (Mac48Address::ConvertFrom (Mac48Address::Allocate ()));
-    m_txNode ->AddDevice (txDev2);
-    Ptr<Ipv4> ipv4 = m_txNode ->GetObject<Ipv4> ();
-    uint32_t netdev_idx = ipv4->AddInterface (txDev2);
-    Ipv4InterfaceAddress ipv4Addr = Ipv4InterfaceAddress (Ipv4Address ("10.0.1.2"), Ipv4Mask (0xffff0000U));
-    ipv4->AddAddress (netdev_idx, ipv4Addr);
-    ipv4->SetUp (netdev_idx);
-  }
-
-
-  //PointToPointHelper pointToPoint;
-//pointToPoint.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
-//pointToPoint.SetChannelAttribute ("Delay", StringValue ("2ms"));
-
-
-  // link the two nodes
-  Ptr<SimpleChannel> channel1 = CreateObject<SimpleChannel> ();
-  rxDev1->SetChannel (channel1);
-  txDev1->SetChannel (channel1);
-
-  Ptr<SimpleChannel> channel2 = CreateObject<SimpleChannel> ();
-  rxDev2->SetChannel (channel2);
-  txDev2->SetChannel (channel2);
-
-
-  // Create the UDP sockets
-//  Ptr<SocketFactory> rxSocketFactory = m_rxNode->GetObject<UdpSocketFactory> ();
-//  Ptr<Socket> rxSocket = rxSocketFactory->CreateSocket ();
-//  NS_TEST_EXPECT_MSG_EQ (rxSocket->Bind (InetSocketAddress (Ipv4Address ("10.0.0.1"), 1234)), 0, "trivial");
-//  rxSocket->SetRecvCallback (MakeCallback (&DifferentiatedPacingForOWDEstimation::ReceivePkt, this));
-//
-//  Ptr<Socket> rxSocket2 = rxSocketFactory->CreateSocket ();
-//  rxSocket2->SetRecvCallback (MakeCallback (&DifferentiatedPacingForOWDEstimation::ReceivePkt2, this));
-//  NS_TEST_EXPECT_MSG_EQ (rxSocket2->Bind (InetSocketAddress (Ipv4Address ("10.0.1.1"), 1234)), 0, "trivial");
-//
-//  Ptr<SocketFactory> txSocketFactory = m_txNode ->GetObject<UdpSocketFactory> ();
-//  Ptr<Socket> txSocket = txSocketFactory->CreateSocket ();
-//  txSocket->SetAllowBroadcast (true);
-}
-
-
-void
-DifferentiatedPacingForOWDEstimation::DoRun (void)
-{
-
-
-  // ------ Now the tests ------------
-
-  // Unicast test
-  SendData (txSocket, "10.0.0.1");
-  NS_TEST_EXPECT_MSG_EQ (m_receivedPacket->GetSize (), 123, "trivial");
-  NS_TEST_EXPECT_MSG_EQ (m_receivedPacket2->GetSize (), 0, "second interface should receive it");
-
-  m_receivedPacket->RemoveAllByteTags ();
-  m_receivedPacket2->RemoveAllByteTags ();
-
-  // Simple broadcast test
-
-  SendData (txSocket, "255.255.255.255");
-  NS_TEST_EXPECT_MSG_EQ (m_receivedPacket->GetSize (), 123, "trivial");
-  NS_TEST_EXPECT_MSG_EQ (m_receivedPacket2->GetSize (), 0, "second socket should not receive it (it is bound specifically to the second interface's address");
-
-  m_receivedPacket->RemoveAllByteTags ();
-  m_receivedPacket2->RemoveAllByteTags ();
-
-  // Broadcast test with multiple receiving sockets
-
-  // When receiving broadcast packets, all sockets sockets bound to
-  // the address/port should receive a copy of the same packet -- if
-  // the socket address matches.
-  rxSocket2->Dispose ();
-  rxSocket2 = rxSocketFactory->CreateSocket ();
-  rxSocket2->SetRecvCallback (MakeCallback (&DifferentiatedPacingForOWDEstimation::ReceivePkt2, this));
-  NS_TEST_EXPECT_MSG_EQ (rxSocket2->Bind (InetSocketAddress (Ipv4Address ("0.0.0.0"), 1234)), 0, "trivial");
-
-  SendData (txSocket, "255.255.255.255");
-  NS_TEST_EXPECT_MSG_EQ (m_receivedPacket->GetSize (), 123, "trivial");
-  NS_TEST_EXPECT_MSG_EQ (m_receivedPacket2->GetSize (), 123, "trivial");
-
-  m_receivedPacket = 0;
-  m_receivedPacket2 = 0;
-
-  // Simple Link-local multicast test
-
-//  txSocket->BindToNetDevice (txDev1);
-//  SendData (txSocket, "224.0.0.9");
-//  NS_TEST_EXPECT_MSG_EQ (m_receivedPacket->GetSize (), 0, "first socket should not receive it (it is bound specifically to the second interface's address");
-//  NS_TEST_EXPECT_MSG_EQ (m_receivedPacket2->GetSize (), 123, "recv2: 224.0.0.9");
-
-//  m_receivedPacket->RemoveAllByteTags ();
-//  m_receivedPacket2->RemoveAllByteTags ();
-
-
-
-}
 #endif
 
 
@@ -448,9 +225,24 @@ AddAsymetricLink(Ptr<Node> r1, Ptr<Node> r2, TimeValue r1r2Delay,TimeValue r2r1D
 
 }
 
+
+/**
+In our XP rate does not matter
+
+**/
 int main()
 {
   // TODO command line helper to choose parameters (topology, transfer intervals, etc...)
+  CommandLine cmd;
+//  cmd.AddValue ("useIpv6", "Use Ipv6", useV6);
+//  cmd.Parse (argc, argv);
+
+
+  Time delayCtoS_1 = MilliSeconds(30);
+  Time delayCtoS_2 = MilliSeconds(30);
+
+  Time delayStoC_1 = MilliSeconds(100);
+  Time delayStoC_2 = MilliSeconds(100);
 
 //  DifferentiatedPacingForOWDEstimation test;
 //  test.SetupSimulation();
@@ -475,46 +267,88 @@ int main()
 
 //  NodeContainer nCnRC1 = NodeContainer;
 
-  // We create the channels first without any IP addressing information
+  // Configure p2p helper
   PointToPointHelper p2p;
   p2p.SetDeviceAttribute ("DataRate", StringValue ("5Mbps"));
-  p2p.SetChannelAttribute ("Delay", TimeValue ( MilliSeconds(2)) );
-  NetDeviceContainer dCdCR1 = p2p.Install (nC, nRC1);
 
-  // Later, we add IP addresses.
   Ipv4AddressHelper ipv4;
-  ipv4.SetBase ("10.0.1.0", "255.255.255.0");
-  Ipv4InterfaceContainer iCiRC1 = ipv4.Assign (dCdCR1);
 
 
+  // We create the channel C<->RC1
+  p2p.SetChannelAttribute ("Delay", TimeValue ( MilliSeconds(0)) );
+  NetDeviceContainer dCdRC1 = p2p.Install (nC, nRC1);
+  NetDeviceContainer dCdRC2 = p2p.Install (nC, nRC2);
+
+  // We create the channels S<->RS1/2
   NetDeviceContainer dSdRS1 = p2p.Install (nS, nRS1);
+  NetDeviceContainer dSdRS2 = p2p.Install (nS, nRS2);
 
+  // IP addressing for C / RC1
+  ipv4.SetBase ("10.0.1.0", "255.255.255.0");
+  Ipv4InterfaceContainer iCiRC1 = ipv4.Assign (dCdRC1);
+
+  // IP addressing for C / RC2
+  ipv4.SetBase ("10.0.2.0", "255.255.255.0");
+  Ipv4InterfaceContainer iCiRC2 = ipv4.Assign (dCdRC2);
+
+
+
+  // IP addressing for S / RS1
   ipv4.SetBase ("20.0.1.0", "255.255.255.0");
   Ipv4InterfaceContainer iSiRS1 = ipv4.Assign (dSdRS1);
 
+  // IP addressing for S / RS2
+  ipv4.SetBase ("20.0.2.0", "255.255.255.0");
+  Ipv4InterfaceContainer iSiRS2 = ipv4.Assign (dSdRS2);
 
-  // Then I want to add an asymetric link
-  //AddNetworkRouteTo
-//  AddAsymetricLink( nRC1, nRS1, TimeValue( MilliSeconds("30ms")), TimeValue( MilliSeconds("100ms")) );
-  p2p.SetChannelAttribute ("Delay", TimeValue( MilliSeconds(30)));
+
+  // Create channels RC1_1<->RS1_1
+  p2p.SetChannelAttribute ("Delay", TimeValue( delayCtoS_1 ));
   NetDeviceContainer dRC1dRS1_1 = p2p.Install(nRC1, nRS1);
 
-  p2p.SetChannelAttribute ("Delay", TimeValue( MilliSeconds(100)));
+  // Create channels RC1_2<->RS1_2
+  p2p.SetChannelAttribute ("Delay", TimeValue( delayStoC_1  ));
   NetDeviceContainer dRC1dRS1_2 = p2p.Install(nRC1, nRS1);
 
+
+  // Addressing RC1_1 <-> RS1_1
   ipv4.SetBase ("30.0.1.0", "255.255.255.0");
   Ipv4InterfaceContainer iRC1iRS1_1  = ipv4.Assign (dRC1dRS1_1 );
 
+  // Addressing RC1_2 <-> RS1_2
   ipv4.SetBase ("30.0.2.0", "255.255.255.0");
   Ipv4InterfaceContainer iRC1iRS1_2  = ipv4.Assign (dRC1dRS1_2 );
 
 
-  p2p.EnablePcapAll ("owd");
+  // Create channels RC2_1<->RS2_1
+  p2p.SetChannelAttribute ("Delay", TimeValue( delayCtoS_2 ));
+  NetDeviceContainer dRC2dRS2_1 = p2p.Install(nRC2, nRS2);
 
+  // Create channels RC2_2<->RS1_2
+  p2p.SetChannelAttribute ("Delay", TimeValue( delayStoC_2  ));
+  NetDeviceContainer dRC2dRS2_2 = p2p.Install(nRC2, nRS2);
+
+  // Addressing RC2_1<->RS2_1
+  ipv4.SetBase ("40.0.1.0", "255.255.255.0");
+  Ipv4InterfaceContainer iRC2iRS2_1  = ipv4.Assign (dRC2dRS2_1 );
+
+  // Addressing RC2_2 <-> RS2_2
+  ipv4.SetBase ("40.0.2.0", "255.255.255.0");
+  Ipv4InterfaceContainer iRC2iRS2_2  = ipv4.Assign (dRC2dRS2_2 );
+
+
+
+
+
+  // Retrieve IPs
   Ptr<Ipv4> ipv4C = nC->GetObject<Ipv4> ();
   Ptr<Ipv4> ipv4S = nS->GetObject<Ipv4> ();
+
   Ptr<Ipv4> ipv4RC1 = nRC1->GetObject<Ipv4> ();
+  Ptr<Ipv4> ipv4RC2 = nRC2->GetObject<Ipv4> ();
+
   Ptr<Ipv4> ipv4RS1 = nRS1->GetObject<Ipv4> ();
+  Ptr<Ipv4> ipv4RS2 = nRS2->GetObject<Ipv4> ();
 
 //  Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
 
@@ -526,39 +360,39 @@ int main()
 //  ipv4RoutingHelper.PrintRoutingTableAllAt(Seconds(3),  routintable);
 //  NS_LOG_UNCOND(routintable);
 
-  // Create static routes from A to C
+  // retrieve IP stack for each node
   Ptr<Ipv4StaticRouting> rC = ipv4RoutingHelper.GetStaticRouting (ipv4C);
   Ptr<Ipv4StaticRouting> rS = ipv4RoutingHelper.GetStaticRouting (ipv4S);
 
   Ptr<Ipv4StaticRouting> rRC1 = ipv4RoutingHelper.GetStaticRouting (ipv4RC1);
   Ptr<Ipv4StaticRouting> rRS1 = ipv4RoutingHelper.GetStaticRouting (ipv4RS1);
-//  Ptr<Ipv4StaticRouting> rRC2 = ipv4RoutingHelper.GetStaticRouting (ipv4RC1);
+
+  Ptr<Ipv4StaticRouting> rRC2 = ipv4RoutingHelper.GetStaticRouting (ipv4RC2);
+  Ptr<Ipv4StaticRouting> rRS2 = ipv4RoutingHelper.GetStaticRouting (ipv4RS2);
+
 
   // add route C -> RC1_1  -> RS1_1 -> S
   rC->AddHostRouteTo (Ipv4Address ("20.0.1.1"), Ipv4Address ("10.0.1.2"), 1);
   rRC1->AddHostRouteTo (Ipv4Address ("20.0.1.1"), 2 , 1); // if , metric
-//  rRS1->AddHostRouteTo (Ipv4Address ("20.0.1.1"), Ipv4Address ("20.0.1.1"), 1);
 
   // add route S -> RS1_1  -> RC1_1 -> C
   rS->AddHostRouteTo (Ipv4Address ("10.0.1.1"), Ipv4Address ("20.0.1.2"), 1);
   rRS1->AddHostRouteTo (Ipv4Address ("10.0.1.1"), 3,1);
 
 
-  // The ifIndex for this outbound route is 1; the first p2p link added
-  // 10.1.1.1 = ipC
-//  staticRoutingRC1->AddHostRouteTo (Ipv4Address ("10.1.1.1"), Ipv4Address ("10.1.1.2"), 1);
-//  staticRoutingRC1->AddHostRouteTo (Ipv4Address ("20.1.1.1"), Ipv4Address ("30.1.1.2"), 2);
-//
-//
-//  staticRoutingRS1->AddHostRouteTo (Ipv4Address ("10.1.1.1"), Ipv4Address ("30.1.1.1"), 2);
-  // Now I want to set the routing tables
+  // add route C -> RC2_1  -> RS2_1 -> S
+  rC->AddHostRouteTo (Ipv4Address ("20.0.2.1"), Ipv4Address ("10.0.2.2"), 2);
+  rRC2->AddHostRouteTo (Ipv4Address ("20.0.2.1"), 2, 1); // if , metric
 
-//  AddInternetStack (txNode);
-//  AddInternetStack (rxNode);
+  // add route S -> RS2_1  -> RC2_1 -> C
+  rS->AddHostRouteTo (Ipv4Address ("10.0.2.1"), Ipv4Address ("20.0.2.2"), 2);
+  rRS2->AddHostRouteTo (Ipv4Address ("10.0.2.1"), 3,1);
 
-  // Then Create topology, then install application
-//  CreateTopology(txNode,rxNode);
 
+
+
+  // Register pcap for debug
+//  p2p.EnablePcapAll ("owd");
 
   // Then install application
   Ptr<OWDHost> clientApp = CreateObject<OWDHost>();
@@ -577,6 +411,34 @@ int main()
   serverApp->SetStopTime (Seconds (4.0));
 
   Simulator::Run ();
+
+
+  // Use GnuplotHelper to plot the packet byte count over time
+  GnuplotHelper plotHelper;
+
+  // Configure the plot.  The first argument is the file name prefix
+  // for the output files generated.  The second, third, and fourth
+  // arguments are, respectively, the plot title, x-axis, and y-axis labels
+//  plotHelper.ConfigurePlot ("seventh-packet-byte-count",
+//                           "Packet Byte Count vs. Time",
+//                           "Time (Seconds)",
+//                           "Packet Byte Count");
+
+  // Specify the probe type, probe path (in configuration namespace), and
+  // probe output trace source ("OutputBytes") to plot.  The fourth argument
+  // specifies the name of the data series label on the plot.  The last
+  // argument formats the plot by specifying where the key should be placed.
+//  plotHelper.PlotProbe (probeName,
+//                       probeTrace,
+//                       "OutputBytes",
+//                       "Packet Byte Count",
+//                       GnuplotAggregator::KEY_BELOW);
+
+
+
+
+
+
   Simulator::Destroy ();
 //  Time::SetResolution (Time::NS);
   NS_LOG_UNCOND("test");

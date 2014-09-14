@@ -32,6 +32,7 @@
 
 #include "owd-client.h"
 #include "ns3/seq-ts-header.h"
+#include "ns3/abort.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -39,14 +40,28 @@
 
 NS_LOG_COMPONENT_DEFINE ("OwdClient");
 
+
+
+static const char* modeNames[] = {
+"RTT sampling",
+"OWD estimation"
+};
+
+
+
 OWDHost::OWDHost ()
+
 {
   NS_LOG_FUNCTION (this);
-  m_sent = 0;
+  m_inflight = 0;
 //  m_socket = 0;
   m_sendEvent = EventId ();
   m_count = 1;
-  m_interval = MilliSeconds(2);
+//  m_interval = MilliSeconds(2);
+
+//  m_currentMode = RTTSampling;
+  m_sampleRTTmaxRounds = 1;
+//  m_txBuffer.SetHeadSequence(1);std::vector<fastestSocket
 }
 
 OWDHost::~OWDHost ()
@@ -105,13 +120,16 @@ OWDHost::StartApplication (void)
 
       // should bind to a specific ip
       // 0 or 1 ?
-//      NS_LOG_INFO("Nb of ip on interface " << i << " : " << ip->GetNAddresses(i));
+      NS_LOG_INFO("Socket "<< i << " binding to " << ip->GetAddress(i,0).GetLocal() );
       sock->Bind ( InetSocketAddress ( ip->GetAddress(i,0).GetLocal(), CFG_PORT) );
 
       // Should be
-      sock->SetRecvCallback (MakeCallback( &OWDHost::HandleRecv, this));
+//      sock->SetRecvCallback (MakeCallback( &OWDHost::HandleRecv, this));
+
+      NS_LOG_INFO("Socket "<< i << " connecting to " << ippeer->GetAddress(i,0).GetLocal() );
       sock->Connect( InetSocketAddress(ippeer->GetAddress(i,0).GetLocal() , CFG_PORT) );
       m_sockets.push_back(sock);
+//      m_sample
   }
 //  if (m_socket == 0)
 //    {
@@ -119,11 +137,119 @@ OWDHost::StartApplication (void)
 //      m_socket->Connect (InetSocketAddress (Ipv4Address::ConvertFrom(m_peerAddress), m_peerPort));
 //
 //    }
-
+  ChangeMode(RTTSampling);
 
 // TODO start with probign RTTs
-  m_sendEvent = Simulator::Schedule (Seconds (0.0), &OWDHost::Send, this);
+  m_sendEvent = Simulator::Schedule (Seconds (0.0), &OWDHost::SampleRTTStart, this);
 }
+
+void
+OWDHost::ChangeMode(Mode mode)
+{
+  NS_LOG_FUNCTION(this << "From mode " << modeNames[m_currentMode] << " to " << modeNames[mode]);
+
+  // Check that every ACK in flight has been acknowledged
+
+  m_currentMode=mode;
+  if(mode == RTTSampling)
+  {
+    //! update callbacks
+    for(int i = 0 ; i < (int)m_sockets.size() ; ++i)
+    {
+      //!
+      m_sockets[i]->SetRecvCallback (MakeCallback( &OWDHost::SamplingRTTRecv, this));
+
+    }
+  }
+  else
+  {
+    // Mode set to owd
+    //! update callbacks
+    for(int i = 0 ; i < (int)m_sockets.size() ; ++i)
+    {
+      //!
+      m_sockets[i]->SetRecvCallback (MakeCallback( &OWDHost::EstimateOWDRecv, this));
+
+    }
+
+  }
+
+}
+
+
+void
+OWDHost::EstimateOWDRecv(Ptr<Socket> sock )
+{
+  NS_LOG_FUNCTION(this << sock);
+}
+
+
+int
+OWDHost::GetIndexOfSocket(Ptr<Socket> sock)
+{
+  //!
+  for(int i = 0 ; i < (int)m_sockets.size() ; ++i)
+  {
+    //!
+    if( m_sockets[i] == sock)
+      return i;
+
+  }
+
+  NS_FATAL_ERROR("sock should exist !!");
+}
+
+void
+OWDHost::SamplingRTTRecv(Ptr<Socket> sock )
+{
+  NS_LOG_FUNCTION(this << sock);
+  //!
+  Ptr<Packet> packet;
+  Address from;
+  NS_ASSERT((packet = sock->RecvFrom (from)));
+
+  m_inflight--;
+
+
+  int id = GetIndexOfSocket( sock );
+
+
+  // We record the timestamp
+//  retrieve TS and store
+
+  SeqTsHeader seqTs;
+  // We should
+  NS_ASSERT( packet->RemoveHeader(seqTs) > 0 );
+//  m_RttSamples[id] = seqTs.GetTs();
+
+  // socket index / arrival order at the receiver
+  // immediately deduced from received seq nb.
+  m_forwardOrder.push_back( std::make_pair(id,seqTs.GetSeq()) );
+
+
+  //! if we received echoed packet from all subflows
+  if(m_inflight <= 0)
+  {
+    //! We finished a round => reset
+    NS_LOG_INFO("Rtt sampling: finished round " << m_round << " (out of " << m_sampleRTTmaxRounds << "). "
+      << "Subflow [" << id << "] forward delay looks shorter: "
+//      << << " < " << ;
+      );
+    m_round++;
+//    m_inflight = 0;
+
+    //! if we finished enough rounds
+    if( m_round >= m_sampleRTTmaxRounds)
+    {
+      // Then we shall change mode to start checking OWDs
+      ChangeMode(OWDEstimation);
+    }
+    return;
+  }
+
+  //! Here it means we still expect a seq on another path
+}
+
 
 void
 OWDHost::HandleRecv( Ptr<Socket> socket )
@@ -168,46 +294,50 @@ OWDHost::StopApplication (void)
 }
 
 void
-OWDHost::Send (void)
+OWDHost::SampleRTTStart(void)
 {
   NS_LOG_FUNCTION (this);
-  NS_ASSERT (m_sendEvent.IsExpired ());
+//  NS_ASSERT (m_sendEvent.IsExpired ());
 
-  //
-  SeqTsHeader seqTs;
-  seqTs.SetSeq (m_sent);
+  NS_ASSERT( m_currentMode == RTTSampling);
 
-  Ptr<Packet> p = Create<Packet> ( seqTs.GetSerializedSize() ); // 8+4 : the size of the seqTs header
-  p->AddHeader (seqTs);
 
-//  std::stringstream peerAddressStringStream;
-//  peerAddressStringStream << Ipv4Address::ConvertFrom (m_peerAddress);
+  for(int i = 0 ; i < (int)m_sockets.size() ;++i)
+  {
+//    Ptr<Socket> sock = m_sockets[i];
 
-  Ptr<Socket> m_socket = m_sockets[0];
+    Send( m_sockets[i] , m_inflight);
+    ++m_inflight;
+  }
 
-  if ((m_socket->Send (p)) >= 0)
-    {
-      ++m_sent;
-      NS_LOG_INFO (
-                   "TraceDelay TX " << m_size << " bytes to "
-//                                    << peerAddressStringStream.str ()
-                                    << " Uid: " << p->GetUid ()
-                                    << " Time: " <<
-                                    (Simulator::Now ()).GetMicroSeconds() << "µs "
-                   );
 
-    }
-  else
-    {
-      NS_LOG_INFO ("Error while sending " << m_size << " bytes to "
-//                                          << peerAddressStringStream.str ()
-                   );
-    }
-
-  if (m_sent < m_count)
-    {
-      m_sendEvent = Simulator::Schedule (m_interval, &OWDHost::Send, this);
-    }
+//  if (m_inflight < m_count)
+//    {
+//      m_sendEvent = Simulator::Schedule (m_interval, &OWDHost::Send, this);
+//    }
 }
 
 
+void
+OWDHost::Send(Ptr<Socket> sock, uint32_t seqNb)
+{
+  NS_LOG_FUNCTION(this << " Sending seq  [" << seqNb << "]");
+  NS_ASSERT(sock);
+
+  SeqTsHeader seqTs;
+  seqTs.SetSeq (seqNb);
+
+  Address addr;
+  sock->GetSockName(addr);
+
+  Ptr<Packet> packet = Create<Packet> ( seqTs.GetSerializedSize() ); // 8+4 : the size of the seqTs header
+  packet->AddHeader (seqTs);
+
+  NS_ASSERT_MSG((sock->Send (packet)) >= 0, "Error while sending packet");
+
+  NS_LOG_INFO ( "Send seq nb [" << seqTs.GetSeq() << "] from " << InetSocketAddress::ConvertFrom(addr).GetIpv4()
+//               << " to "
+               <<" at Time: " <<(Simulator::Now ()).GetMicroSeconds() << "µs "
+               " with timestamp [" << seqTs.GetTs() << "]"
+               );
+}

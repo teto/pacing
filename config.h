@@ -5,7 +5,8 @@
 #define CFG_PORT 1234
 
 
-enum ProbingMode {
-BOOTSTRAP,  //!< Just getting RTTs
-ESTIMATING_OWD  //!< Different techniques might follow
+enum Mode {
+RTTSampling,  //!< Just getting RTTs
+OWDEstimation  //!< Different techniques might follow
 };
+

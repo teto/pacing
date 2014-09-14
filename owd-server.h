@@ -25,6 +25,8 @@
 #include "ns3/address.h"
 #include "ns3/socket.h"
 #include "ns3/packet.h"
+#include "ns3/tcp-rx-buffer.h"
+#include "ns3/nstime.h"
 
 
 using namespace ns3;
@@ -52,6 +54,8 @@ private:
 
   virtual void StartApplication (void);
   virtual void StopApplication (void);
+
+  TcpRxBuffer m_rxBuffer;
 
   /**
    * \brief Handle a packet reception.

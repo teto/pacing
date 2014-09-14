@@ -31,6 +31,7 @@
 #include "ns3/uinteger.h"
 #include "ns3/ipv4.h"
 
+#include "ns3/seq-ts-header.h"
 #include "owd-server.h"
 #include "config.h"
 
@@ -127,22 +128,34 @@ OwdServer::HandleRead (Ptr<Socket> socket)
   Address from;
   while ((packet = socket->RecvFrom (from)))
     {
+    // Extract header
+    SeqTsHeader seqTs;
+    NS_ASSERT(packet->RemoveHeader(seqTs) >= 0);
 
-      NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server received " << packet->GetSize () << " bytes from " <<
-                   InetSocketAddress::ConvertFrom (from).GetIpv4 () << " port " <<
-                   InetSocketAddress::ConvertFrom (from).GetPort ());
 
-      packet->RemoveAllPacketTags ();
-      packet->RemoveAllByteTags ();
 
-      // TODO send lowest received packet
-      // change seq paquet
-//      NS_LOG_LOGIC ("Echoing packet");
+      NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server received packet with TS ["
+                   << seqTs.GetTs() << "] and seq [" << seqTs.GetSeq() << "] from "
+                   << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
+//                   << " port " << InetSocketAddress::ConvertFrom (from).GetPort ()
+                   );
+
+//      packet->RemoveAllPacketTags ();
+//      packet->RemoveAllByteTags ();
+
+    //  Update header value
+    seqTs.SetReceiverTs( (uint64_t) seqTs.GetTs().GetTimeStep() );
+    seqTs.SetSenderTs( (uint64_t)Simulator::Now ().GetTimeStep () );
+      packet->AddHeader(seqTs);
       socket->SendTo (packet, 0, from);
 
-      NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server sent " << packet->GetSize () << " bytes to " <<
-                   InetSocketAddress::ConvertFrom (from).GetIpv4 () << " port " <<
-                   InetSocketAddress::ConvertFrom (from).GetPort ());
+      NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server sent "
+                   << " Sender TS " << seqTs.GetTs()
+                   << " Receiver TS " << seqTs.GetReceiverTs()
+
+                   << " from " << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
+//                   << " port " << InetSocketAddress::ConvertFrom (from).GetPort ()
+                   );
 
     }
 }
