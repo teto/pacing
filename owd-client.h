@@ -37,13 +37,20 @@
 
 using namespace ns3;
 
-//
+
+
 typedef struct _rttSample
 {
-Time real[];      //!< computed thanks to ns3 clock synchronization
-Time estimated[]; //!< estimated via our technique
-Time halfRTT[];   //!< legacy method of dividing RTT by half
+Time real;      //!< computed thanks to ns3 clock synchronization
+Time estimated; //!< estimated via our technique
+Time halfRTT;   //!< legacy method of dividing RTT by half
 } RttSample;
+
+typedef struct _roundStats
+{
+RttSample samples[10];
+} RoundStats;
+
 
 //std::vector<fastestSocket>
 
@@ -77,8 +84,8 @@ public:
   /**
   We suppose there is no packet loss
   **/
-  void SamplingRTTRecv(Ptr<Socket> packet );
-  void EstimateOWDRecv(Ptr<Socket> packet );
+  void SamplingRTTRecv(int sockId, const SeqTsHeader& seqTs);
+  void EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs);
 
 protected:
   virtual void DoDispose (void);
@@ -107,7 +114,7 @@ private:
   /**
   Will schedule different sends on different subflows in order to compute
   **/
-  void EstimateOWDSend ( );
+  void EstimateOWDStart ( );
 
   /** Utility function used by both modes.
   Send a timestampped packet with "seqNb" on socket "sock"
@@ -116,13 +123,13 @@ private:
   void Send(Ptr<Socket> sock, uint32_t seqNb);
 
   uint32_t m_count; //!< Maximum number of packets the application will send
-  TcpTxBuffer m_txBuffer; //!< Just used to see what packets.
+//  TcpTxBuffer m_txBuffer; //!< Just used to see what packets.
 
   //! How many packets we can send in parallel
   uint32_t m_probesInARound;
 
   //! Sampled RTTs
-  TracedValue<RttSample> m_RttSamples[10]; //!< one tracedvalue per socket (supports max 10 sockets)
+  std::vector<RttSample> m_RttSamples[10]; //!< one tracedvalue per socket (supports max 10 sockets)
 
 
   Mode m_currentMode; //!< decide what actions to take
@@ -142,6 +149,8 @@ private:
 
   EventId m_sendEvent; //!< Event to send the next packet
 
+
+  RoundStats m_currentRoundStats; //!<
 //  std::vector<Time> m_rttBuffer;  //!<
   std::vector< std::pair<int,int> > m_forwardOrder; //!< socket no/position registered by packets of nb(sockets) records
 };

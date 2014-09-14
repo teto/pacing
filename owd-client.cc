@@ -124,24 +124,31 @@ OWDHost::StartApplication (void)
       sock->Bind ( InetSocketAddress ( ip->GetAddress(i,0).GetLocal(), CFG_PORT) );
 
       // Should be
-//      sock->SetRecvCallback (MakeCallback( &OWDHost::HandleRecv, this));
+      sock->SetRecvCallback (MakeCallback( &OWDHost::HandleRecv, this));
 
       NS_LOG_INFO("Socket "<< i << " connecting to " << ippeer->GetAddress(i,0).GetLocal() );
       sock->Connect( InetSocketAddress(ippeer->GetAddress(i,0).GetLocal() , CFG_PORT) );
       m_sockets.push_back(sock);
-//      m_sample
   }
-//  if (m_socket == 0)
-//    {
-//  TODO ? useless ?
-//      m_socket->Connect (InetSocketAddress (Ipv4Address::ConvertFrom(m_peerAddress), m_peerPort));
-//
-//    }
   ChangeMode(RTTSampling);
 
 // TODO start with probign RTTs
   m_sendEvent = Simulator::Schedule (Seconds (0.0), &OWDHost::SampleRTTStart, this);
 }
+
+
+
+void
+OWDHost::StopApplication (void)
+{
+  NS_LOG_FUNCTION (this);
+  // Close sockets
+
+
+  Simulator::Cancel (m_sendEvent);
+}
+
+
 
 void
 OWDHost::ChangeMode(Mode mode)
@@ -151,28 +158,28 @@ OWDHost::ChangeMode(Mode mode)
   // Check that every ACK in flight has been acknowledged
 
   m_currentMode=mode;
-  if(mode == RTTSampling)
-  {
-    //! update callbacks
-    for(int i = 0 ; i < (int)m_sockets.size() ; ++i)
-    {
-      //!
-      m_sockets[i]->SetRecvCallback (MakeCallback( &OWDHost::SamplingRTTRecv, this));
-
-    }
-  }
-  else
-  {
-    // Mode set to owd
-    //! update callbacks
-    for(int i = 0 ; i < (int)m_sockets.size() ; ++i)
-    {
-      //!
-      m_sockets[i]->SetRecvCallback (MakeCallback( &OWDHost::EstimateOWDRecv, this));
-
-    }
-
-  }
+//  if(mode == RTTSampling)
+//  {
+//    //! update callbacks
+//    for(int i = 0 ; i < (int)m_sockets.size() ; ++i)
+//    {
+//      //!
+//      m_sockets[i]->SetRecvCallback (MakeCallback( &OWDHost::SamplingRTTRecv, this));
+//
+//    }
+//  }
+//  else
+//  {
+//    // Mode set to owd
+//    //! update callbacks
+//    for(int i = 0 ; i < (int)m_sockets.size() ; ++i)
+//    {
+//      //!
+//      m_sockets[i]->SetRecvCallback (MakeCallback( &OWDHost::EstimateOWDRecv, this));
+//
+//    }
+//
+//  }
 
 }
 
@@ -200,32 +207,24 @@ OWDHost::GetIndexOfSocket(Ptr<Socket> sock)
 }
 
 void
-OWDHost::SamplingRTTRecv(Ptr<Socket> sock )
+OWDHost::SamplingRTTRecv(int sockId, const SeqTsHeader& seqTs)
 {
-  NS_LOG_FUNCTION(this << sock);
-  //!
-  Ptr<Packet> packet;
-  Address from;
-  NS_ASSERT((packet = sock->RecvFrom (from)));
+  NS_LOG_FUNCTION(this);
 
   m_inflight--;
 
-
-  int id = GetIndexOfSocket( sock );
-
-
-  // We record the timestamp
-//  retrieve TS and store
-
-  SeqTsHeader seqTs;
-  // We should
-  NS_ASSERT( packet->RemoveHeader(seqTs) > 0 );
-//  m_RttSamples[id] = seqTs.GetTs();
 
   // socket index / arrival order at the receiver
   // immediately deduced from received seq nb.
   m_forwardOrder.push_back( std::make_pair(id,seqTs.GetSeq()) );
 
+  // TODO record the
+  RttSample sample;
+
+//  sample.halfRTT[i] =
+//  sample.estimate
+
+  m_currentRoundStats[id] = sample;
 
   //! if we received echoed packet from all subflows
   if(m_inflight <= 0)
@@ -236,13 +235,15 @@ OWDHost::SamplingRTTRecv(Ptr<Socket> sock )
 //      << << " < " << ;
       );
     m_round++;
-//    m_inflight = 0;
 
     //! if we finished enough rounds
     if( m_round >= m_sampleRTTmaxRounds)
     {
       // Then we shall change mode to start checking OWDs
       ChangeMode(OWDEstimation);
+      m_roundStats.push_back(m_currentRoundStats);
+      RoundStats stats;
+      m_currentRoundStats = stats;
     }
     return;
   }
@@ -259,6 +260,8 @@ OWDHost::HandleRecv( Ptr<Socket> socket )
   // TODO depending on the socket
   Ptr<Packet> packet;
   Address from;
+
+  // ce while est bizarre.
   while ((packet = socket->RecvFrom (from)))
     {
 
@@ -269,29 +272,30 @@ OWDHost::HandleRecv( Ptr<Socket> socket )
       packet->RemoveAllPacketTags ();
       packet->RemoveAllByteTags ();
 
-      // TODO send lowest received packet
-      // change seq paquet
-//      NS_LOG_LOGIC ("Echoing packet");
-//      socket->SendTo (packet, 0, from);
-//
-//      NS_LOG_INFO ("At time " << Simulator::Now ().GetSeconds () << "s server sent " << packet->GetSize () << " bytes to " <<
-//                   InetSocketAddress::ConvertFrom (from).GetIpv4 () << " port " <<
-//                   InetSocketAddress::ConvertFrom (from).GetPort ());
+      // Retrieve socket Id
+      int id = GetIndexOfSocket( sock );
 
+      // Extract header from packet
+      SeqTsHeader seqTs;
+      NS_ASSERT(packet->RemoveHeader(seqTs) >= 0);
+
+      NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server received packet with TS ["
+                   << seqTs.GetTs() << "] and seq [" << seqTs.GetSeq() << "] from "
+                   << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
+//                   << " port " << InetSocketAddress::ConvertFrom (from).GetPort ()
+                   );
+
+      if(m_currentMode == RTTSampling)
+      {
+        SamplingRTTRecv(id, seqTs);
+      }
+      else
+      {
+        EstimateOWDRecv(id,SeqTs);
+      }
     }
 }
 
-
-
-void
-OWDHost::StopApplication (void)
-{
-  NS_LOG_FUNCTION (this);
-  // Close sockets
-
-
-  Simulator::Cancel (m_sendEvent);
-}
 
 void
 OWDHost::SampleRTTStart(void)
@@ -300,7 +304,27 @@ OWDHost::SampleRTTStart(void)
 //  NS_ASSERT (m_sendEvent.IsExpired ());
 
   NS_ASSERT( m_currentMode == RTTSampling);
+  NS_ASSERT_MSG( m_inflight == 0,"Can't start if packets in flight");
 
+  // Send on all subflows a packet at the same time
+  for(int i = 0 ; i < (int)m_sockets.size() ;++i)
+  {
+    Send( m_sockets[i] , m_inflight);
+    ++m_inflight;
+  }
+
+}
+
+void
+OWDHost::EstimateOWDStart(void)
+{
+  NS_LOG_FUNCTION (this);
+//  NS_ASSERT (m_sendEvent.IsExpired ());
+
+  NS_ASSERT( m_currentMode == OWDEstimation);
+
+
+  // First we should estimate the OWD from the past samples
 
   for(int i = 0 ; i < (int)m_sockets.size() ;++i)
   {
