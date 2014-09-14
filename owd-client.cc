@@ -56,9 +56,9 @@ OWDHost::OWDHost ()
   m_inflight = 0;
 //  m_socket = 0;
   m_sendEvent = EventId ();
-  m_count = 1;
+//  m_count = 1;
 //  m_interval = MilliSeconds(2);
-
+  m_highestAcknowledgedAckInRound = 0;
 //  m_currentMode = RTTSampling;
   m_sampleRTTmaxRounds = 1;
 //  m_txBuffer.SetHeadSequence(1);std::vector<fastestSocket
@@ -158,36 +158,17 @@ OWDHost::ChangeMode(Mode mode)
   // Check that every ACK in flight has been acknowledged
 
   m_currentMode=mode;
-//  if(mode == RTTSampling)
-//  {
-//    //! update callbacks
-//    for(int i = 0 ; i < (int)m_sockets.size() ; ++i)
-//    {
-//      //!
-//      m_sockets[i]->SetRecvCallback (MakeCallback( &OWDHost::SamplingRTTRecv, this));
-//
-//    }
-//  }
-//  else
-//  {
-//    // Mode set to owd
-//    //! update callbacks
-//    for(int i = 0 ; i < (int)m_sockets.size() ; ++i)
-//    {
-//      //!
-//      m_sockets[i]->SetRecvCallback (MakeCallback( &OWDHost::EstimateOWDRecv, this));
-//
-//    }
-//
-//  }
 
+  // Reset current round stats
+  RoundStats stats;
+  m_currentRoundStats = stats;
 }
 
 
 void
-OWDHost::EstimateOWDRecv(Ptr<Socket> sock )
+OWDHost::EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs)
 {
-  NS_LOG_FUNCTION(this << sock);
+  NS_LOG_FUNCTION(this);
 }
 
 
@@ -206,50 +187,37 @@ OWDHost::GetIndexOfSocket(Ptr<Socket> sock)
   NS_FATAL_ERROR("sock should exist !!");
 }
 
-void
-OWDHost::SamplingRTTRecv(int sockId, const SeqTsHeader& seqTs)
+//
+//OWDHost::EstimateDeltaOWD()
+//{
+//
+//}
+//
+//
+//int
+//OWDHost::GetFastForwardSubflowId()
+//{
+//
+//}
+//
+//int
+//OWDHost::GetSlowForwardSubflowId()
+//{
+//
+//}
+
+
+
+RoundStats::RoundStats()
 {
-  NS_LOG_FUNCTION(this);
-
-  m_inflight--;
-
-
-  // socket index / arrival order at the receiver
-  // immediately deduced from received seq nb.
-  m_forwardOrder.push_back( std::make_pair(id,seqTs.GetSeq()) );
-
-  // TODO record the
-  RttSample sample;
-
-//  sample.halfRTT[i] =
-//  sample.estimate
-
-  m_currentRoundStats[id] = sample;
-
-  //! if we received echoed packet from all subflows
-  if(m_inflight <= 0)
-  {
-    //! We finished a round => reset
-    NS_LOG_INFO("Rtt sampling: finished round " << m_round << " (out of " << m_sampleRTTmaxRounds << "). "
-      << "Subflow [" << id << "] forward delay looks shorter: "
-//      << << " < " << ;
-      );
-    m_round++;
-
-    //! if we finished enough rounds
-    if( m_round >= m_sampleRTTmaxRounds)
-    {
-      // Then we shall change mode to start checking OWDs
-      ChangeMode(OWDEstimation);
-      m_roundStats.push_back(m_currentRoundStats);
-      RoundStats stats;
-      m_currentRoundStats = stats;
-    }
-    return;
-  }
-
-  //! Here it means we still expect a seq on another path
+    //!
+  FastestForwardSubflow = -1;
+//  RealReverseDeltaOWD;
+//  Time EstimatedForwardDeltaOWD = 0;
+//  Time RealForwardDeltaOWD = 0;
+//  Time EstimatedReverseDeltaOWD = 0;
 }
+
 
 
 void
@@ -273,7 +241,7 @@ OWDHost::HandleRecv( Ptr<Socket> socket )
       packet->RemoveAllByteTags ();
 
       // Retrieve socket Id
-      int id = GetIndexOfSocket( sock );
+      int id = GetIndexOfSocket( socket );
 
       // Extract header from packet
       SeqTsHeader seqTs;
@@ -291,11 +259,22 @@ OWDHost::HandleRecv( Ptr<Socket> socket )
       }
       else
       {
-        EstimateOWDRecv(id,SeqTs);
+        EstimateOWDRecv(id, seqTs);
       }
     }
 }
 
+
+int
+OWDHost::GetRoundNo() const
+{
+  if(m_currentMode == RTTSampling)
+  {
+    return m_rttRoundStats.size();
+  }
+
+  return m_owdRoundStats.size();
+}
 
 void
 OWDHost::SampleRTTStart(void)
@@ -306,6 +285,7 @@ OWDHost::SampleRTTStart(void)
   NS_ASSERT( m_currentMode == RTTSampling);
   NS_ASSERT_MSG( m_inflight == 0,"Can't start if packets in flight");
 
+
   // Send on all subflows a packet at the same time
   for(int i = 0 ; i < (int)m_sockets.size() ;++i)
   {
@@ -313,6 +293,62 @@ OWDHost::SampleRTTStart(void)
     ++m_inflight;
   }
 
+  // Random number should be superior to any seq nb previously sent
+  m_highestAcknowledgedAckInRound = m_inflight + 4000;
+}
+
+//RttRoundStats::RttRoundStats()
+//{
+//  //!
+//}
+
+void
+OWDHost::SamplingRTTRecv(int sockId, const SeqTsHeader& seqTs)
+{
+  NS_LOG_FUNCTION(this);
+
+  m_inflight--;
+
+
+  // socket index / arrival order at the receiver
+  // immediately deduced from received seq nb.
+//  m_forwardOrder.push_back( std::make_pair(id,seqTs.GetSeq()) );
+
+  // TODO record the
+
+  //  sample.estimate
+  m_currentRoundStats.rtt[sockId ] = TimeStep(Simulator::Now().GetTimeStep() ) - seqTs.GetReceiverTs();
+//  m_currentRoundStats.RealForwardDeltaOWD = seqTs.GetSenderTs() - seqTs.GetReceiverTs();
+//  m_currentRoundStats.RealReverseDeltaOWD = Simulator::Now().GetTimeStep() - seqTs.GetSenderTs();
+  if( seqTs.GetSeq() < m_highestAcknowledgedAckInRound)
+  {
+    NS_LOG_INFO("Found fastest subflow") ;
+    m_highestAcknowledgedAckInRound = seqTs.GetSeq();
+    m_currentRoundStats.FastestForwardSubflow = sockId;
+  }
+
+  //! if we received echoed packet from all subflows
+  if(m_inflight <= 0)
+  {
+    //! We finished a round => reset
+    NS_LOG_INFO("Rtt sampling: finished round " << GetRoundNo() << " (out of " << m_sampleRTTmaxRounds << "). "
+      << "Subflow [" << sockId << "] forward delay looks shorter: "
+//      << << " < " << ;
+      );
+
+    m_rttRoundStats.push_back(m_currentRoundStats);
+
+    //! if we finished enough rounds
+    if( GetRoundNo() >= (int)m_sampleRTTmaxRounds)
+    {
+      // Then we shall change mode to start checking OWDs
+      ChangeMode(OWDEstimation);
+
+    }
+    return;
+  }
+
+  //! Here it means we still expect a seq on another path
 }
 
 void

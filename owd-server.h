@@ -28,6 +28,8 @@
 #include "ns3/tcp-rx-buffer.h"
 #include "ns3/nstime.h"
 
+#include "sequencer.h"
+
 
 using namespace ns3;
 
@@ -55,7 +57,8 @@ private:
   virtual void StartApplication (void);
   virtual void StopApplication (void);
 
-  TcpRxBuffer m_rxBuffer;
+  OwdSequencer m_sequencer; //!< used to know what seq  to use
+//  TcpRxBuffer m_rxBuffer;
 
   /**
    * \brief Handle a packet reception.

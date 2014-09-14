@@ -32,6 +32,7 @@
 #include "ns3/nstime.h"
 #include "ns3/tcp-tx-buffer.h"
 #include "ns3/traced-value.h"
+#include "ns3/seq-ts-header.h"
 
 #include "config.h"
 
@@ -46,10 +47,27 @@ Time estimated; //!< estimated via our technique
 Time halfRTT;   //!< legacy method of dividing RTT by half
 } RttSample;
 
-typedef struct _roundStats
+//class RttRoundStats
+//{
+//  RttRoundStats();
+//  Time rtt[10];
+//};
+
+/**
+Only FastestForwardSubflow and rtt are used in RTTsampling mode
+**/
+class RoundStats
 {
-RttSample samples[10];
-} RoundStats;
+public:
+  RoundStats();
+  Time EstimatedForwardDeltaOWD;
+  Time RealForwardDeltaOWD;
+  Time EstimatedReverseDeltaOWD;
+  Time RealReverseDeltaOWD;
+  Time rtt[10];
+  int FastestForwardSubflow;  //!< Used for RTT sampling
+//RttSample samples[10];
+};
 
 
 //std::vector<fastestSocket>
@@ -110,6 +128,15 @@ private:
   **/
   int GetIndexOfSocket(Ptr<Socket> sock);
 
+  /** Depending on mode, returns number of recorded samples
+  */
+  int GetRoundNo() const;
+
+  /**
+  Will try to estimate delta forward one way delay based on up
+  (smoothed ?) 3 past measurements
+  */
+//  Time EstimateForwardOWDs(fOWD1,fOWD2);
 
   /**
   Will schedule different sends on different subflows in order to compute
@@ -122,11 +149,12 @@ private:
   **/
   void Send(Ptr<Socket> sock, uint32_t seqNb);
 
-  uint32_t m_count; //!< Maximum number of packets the application will send
+//  uint32_t m_count; //!< Maximum number of packets the application will send
 //  TcpTxBuffer m_txBuffer; //!< Just used to see what packets.
 
   //! How many packets we can send in parallel
   uint32_t m_probesInARound;
+  uint32_t m_sampleRTTmaxRounds;  //!< How many times we sample the RTT before changing mode
 
   //! Sampled RTTs
   std::vector<RttSample> m_RttSamples[10]; //!< one tracedvalue per socket (supports max 10 sockets)
@@ -134,25 +162,25 @@ private:
 
   Mode m_currentMode; //!< decide what actions to take
 
-  uint32_t m_sampleRTTmaxRounds;  //!< How many times we sample the RTT before changing mode
-  uint32_t m_round;   //!< nb of rounds already accomplished
+
+//  uint32_t m_round;   //!< nb of rounds already accomplished
 
 
   // maybe this should go away
 //  Time m_interval; //!< Packet inter-send time
 
-  uint32_t m_size; //!< Size of the sent packet (including the SeqTsHeader)
-
+  uint32_t m_highestAcknowledgedAckInRound;
   uint32_t m_inflight; //!< Nb of packets in flight. Starts at 0
   std::vector<Ptr<Socket> > m_sockets;
   Ptr<Node> m_peer;
 
   EventId m_sendEvent; //!< Event to send the next packet
 
-
+  std::vector<RoundStats> m_owdRoundStats;
+  std::vector<RoundStats> m_rttRoundStats;
   RoundStats m_currentRoundStats; //!<
 //  std::vector<Time> m_rttBuffer;  //!<
-  std::vector< std::pair<int,int> > m_forwardOrder; //!< socket no/position registered by packets of nb(sockets) records
+//  std::vector< std::pair<int,int> > m_forwardOrder; //!< socket no/position registered by packets of nb(sockets) records
 };
 
 

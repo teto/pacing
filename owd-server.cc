@@ -132,13 +132,14 @@ OwdServer::HandleRead (Ptr<Socket> socket)
     SeqTsHeader seqTs;
     NS_ASSERT(packet->RemoveHeader(seqTs) >= 0);
 
+    // update sequencer
+    m_sequencer.AckSeqNb( seqTs.GetSeq() );
 
-
-      NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server received packet with TS ["
-                   << seqTs.GetTs() << "] and seq [" << seqTs.GetSeq() << "] from "
-                   << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
+    NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server received packet with TS ["
+                 << seqTs.GetTs() << "] and seq [" << seqTs.GetSeq() << "] from "
+                 << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
 //                   << " port " << InetSocketAddress::ConvertFrom (from).GetPort ()
-                   );
+                 );
 
 //      packet->RemoveAllPacketTags ();
 //      packet->RemoveAllByteTags ();
@@ -146,16 +147,18 @@ OwdServer::HandleRead (Ptr<Socket> socket)
     //  Update header value
     seqTs.SetReceiverTs( (uint64_t) seqTs.GetTs().GetTimeStep() );
     seqTs.SetSenderTs( (uint64_t)Simulator::Now ().GetTimeStep () );
-      packet->AddHeader(seqTs);
-      socket->SendTo (packet, 0, from);
 
-      NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server sent "
-                   << " Sender TS " << seqTs.GetTs()
-                   << " Receiver TS " << seqTs.GetReceiverTs()
+    seqTs.SetSeq( m_sequencer.GetHighestRcvdInOrderSeqNb() );
+    packet->AddHeader(seqTs);
+    socket->SendTo (packet, 0, from);
 
-                   << " from " << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
+    NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server sent "
+                 << " Sender TS " << seqTs.GetTs()
+                 << " Receiver TS " << seqTs.GetReceiverTs()
+
+                 << " from " << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
 //                   << " port " << InetSocketAddress::ConvertFrom (from).GetPort ()
-                   );
+                 );
 
     }
 }
