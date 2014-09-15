@@ -1,3 +1,6 @@
 
 can use dans ns3
 TimeMinMaxAvgTotalCalculator
+
+Creer une structure qui détermine les algos
+

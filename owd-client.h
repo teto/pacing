@@ -36,9 +36,11 @@
 
 #include "config.h"
 #include "sequencer.h"
+//#include "strategy.h"
 
 using namespace ns3;
 
+class PacingStrategy;
 
 
 //typedef struct _rttSample
@@ -69,6 +71,7 @@ public:
   Time EstimatedForwardDelay[10];
   Time EstimatedReverseDelay[10];
   int ForwardFastSubflow;  //!< Used
+  int ReverseFastSubflow;  //!< Used
 //RttSample samples[10];
 };
 
@@ -108,7 +111,7 @@ public:
   Returns the delay to wait after a packet on slow path
   before sending the "i" th probe
   */
-  Time GetDelayOfProbe(uint8_t i) const;
+  Time GetProbeDelay(uint8_t i) const;
 
   /**
   We suppose there is no packet loss
@@ -171,7 +174,7 @@ private:
 //  TcpTxBuffer m_txBuffer; //!< Just used to see what packets.
 
   //! How many packets we can send in parallel
-  const uint32_t m_probesInARound;  //!< Number of probes in a round (default 3);
+//  const uint32_t m_probesInARound;  //!< Number of probes in a round (default 3);
   const uint32_t m_sampleRTTmaxRounds;  //!< How many times we sample the RTT before changing mode
   const uint32_t m_owdMaxRounds;  //!< How many times we sample the RTT before changing mode
 
@@ -202,6 +205,8 @@ private:
 //  std::vector< std::pair<int,int> > m_forwardOrder; //!< socket no/position registered by packets of nb(sockets) records
 
 
+  Ptr<PacingStrategy> m_strategy;
+
   //// Variables used in OWD mode
   ////////////////////////////////////////////////////////
   int m_forwardFastSubflow; //!<
@@ -218,6 +223,7 @@ private:
 //  Time m_timeOfLastProbeBeforeSlowPath; //!< Not necessarily set
 //  Time m_timeOfFirstProbeAfterSlowPath; //!< Not necessarily set
 //  Sequencer m_sequencer;  //!< No need ?
+
 };
 
 

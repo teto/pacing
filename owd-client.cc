@@ -53,8 +53,8 @@ static const char* modeNames[] = {
 
 OWDHost::OWDHost () :
   m_probesInARound(3),
-  m_sampleRTTmaxRounds(1),
-  m_owdMaxRounds(3)
+  m_sampleRTTmaxRounds(3),
+  m_owdMaxRounds(10)
 
 {
   NS_LOG_FUNCTION (this);
@@ -189,7 +189,12 @@ OWDHost::EstimateOWDStartNewRound(void)
     m_forwardFastSubflow = m_rttRoundStats.back().ForwardFastSubflow;
 
     // Rtt slow -  abs(DeltaRTT)/2
-    m_estimatedForwardDeltaOwd = std::abs( (m_rttRoundStats.back().rtt[0]- m_rttRoundStats.back().rtt[1]).GetMicroSeconds() ) /2.f;
+//    m_estimatedForwardDeltaOwd = MicroSeconds(std::abs( (m_rttRoundStats.back().rtt[0]- m_rttRoundStats.back().rtt[1]).GetMicroSeconds() ) );
+    m_estimatedForwardDeltaOwd = ns3::Abs( (m_rttRoundStats.back().rtt[0]- m_rttRoundStats.back().rtt[1]) );
+    m_estimatedForwardDeltaOwd = MicroSeconds( m_estimatedForwardDeltaOwd.GetMicroSeconds()/2);
+    NS_LOG_INFO("First OWD estimation round. Setting fast forward path to [" << m_forwardFastSubflow <<"]"
+                << " and setting estimatedForward delay to " << m_estimatedForwardDeltaOwd
+                );
   }
   else
   {
@@ -201,8 +206,10 @@ OWDHost::EstimateOWDStartNewRound(void)
 
 
   // First we should estimate the OWD from the past samples
-  Ptr<Socket> slowSocket = m_sockets[ForwardSlowSubflowId()]
-  Ptr<Socket> fastSocket = m_sockets[ForwardFastSubflowId()]
+  NS_ASSERT( ForwardSlowSubflowId() >= 0 && ForwardSlowSubflowId() < (int)m_sockets.size() );
+  NS_ASSERT( ForwardFastSubflowId() >= 0 && ForwardFastSubflowId() < (int)m_sockets.size() );
+  Ptr<Socket> slowSocket = m_sockets[ForwardSlowSubflowId()];
+  Ptr<Socket> fastSocket = m_sockets[ForwardFastSubflowId()];
 
   //! Send seq nb 2 on slow socket
   Send(slowSocket,1);
@@ -214,7 +221,7 @@ OWDHost::EstimateOWDStartNewRound(void)
   {
     //! sent on forward fast socket seq nb "1"
 //    Time scheduledTime = m_estimatedForwardDeltaOwd + i*delayBetweenProbes;
-    Time scheduledTime = GetDelayOfProbe(i);
+    Time scheduledTime = GetProbeDelay(i);
     NS_LOG_INFO("Scheduling send on fast forward socket of seqnb 0 in "<< scheduledTime.GetMilliSeconds() << "ms");
     Simulator::Schedule ( scheduledTime , &OWDHost::Send, this, fastSocket, 0);
   }
@@ -231,9 +238,9 @@ OWDHost::EstimateOWDStartNewRound(void)
 
 
 Time
-OWDHost::GetDelayOfProbe(uint8_t i) const
+OWDHost::GetProbeDelay(uint8_t i) const
 {
-
+  NS_ASSERT_MSG( (i >= 0) && (i < m_probesInARound),"There is no probe with such an id");
   /**
   The choice of the delay between probe is really critical for the performance of the algorithm
   (speed of convergence, overhead etc...).
@@ -248,7 +255,8 @@ OWDHost::GetDelayOfProbe(uint8_t i) const
   int j = i;
   //! so as to shift j, since we want probes to be centered around DeltaOWD.
   j -= m_probesInARound/2;
-  return (m_estimatedForwardDeltaOwd + i*delayBetweenProbes);
+  NS_LOG_INFO("j [" << j << "]");
+  return (m_estimatedForwardDeltaOwd + MilliSeconds(delayBetweenProbes.GetMilliSeconds()*j) );
 }
 
 void
@@ -259,14 +267,14 @@ OWDHost::EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs)
 
   --m_inflight;
 
-  int arrivalPosition = m_probesInARound - inflight;
+  int arrivalPosition = m_probesInARound - m_inflight;
 
   // We update the RTT (every probe will overwrite it but it's no problem when delay constant)
   m_currentRoundStats.rtt[sockId ] = TimeStep(Simulator::Now().GetTimeStep() ) - seqTs.GetReceiverTs();
 
   // This is real because clocks of client & server are synchronized
   m_currentRoundStats.RealForwardDeltaOWD[sockId] = seqTs.GetSenderTs() - seqTs.GetReceiverTs();
-  m_currentRoundStats.RealReverseDeltaOWD[sockId] = Simulator::Now().GetTimeStep() - seqTs.GetSenderTs();
+  m_currentRoundStats.RealReverseDeltaOWD[sockId] = Simulator::Now() - seqTs.GetSenderTs();
 
   // If
   if( sockId == ForwardSlowSubflowId())
@@ -342,17 +350,24 @@ OWDHost::EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs)
       performance
 
       As a rule of thumb (should improve it) we decrease by 10% the value of the estimated forward deltaOwd.
+
+      As usua, Time values should not be too small to match real hardware clocks and network pacing values
       */
       NS_LOG_INFO("All probes arrived after packet on slow path");
-      m_estimatedForwardDeltaOwd -= 0.1*m_estimatedForwardDeltaOwd;
+      // TODO m_estimatedForwardDeltaOwd*0.1
+      m_estimatedForwardDeltaOwd -= GetProbeDelay(0);
 
       // in this case we can't deduce the ReverseDeltaOWD so we copy the one from previous sampling ?
     }
-    /* this is the opposite here, all probes arrived before packet on slow path, ie we underestimated the DeltaOWD */
+    /* this is the opposite here, all probes arrived before packet on slow path, ie we underestimated the DeltaOWD
+    That should be sthg like this
+    std::max(10ms, 0.1* currentValue)
+    */
     else if(m_arrivalPositionFirstProbeAfterSlowPath < 0)
     {
       NS_LOG_INFO("All probes arrived before packet on slow path");
-      m_estimatedForwardDeltaOwd += 0.1*m_estimatedForwardDeltaOwd;
+//      m_estimatedForwardDeltaOwd += 0.1*m_estimatedForwardDeltaOwd;
+      m_estimatedForwardDeltaOwd += GetProbeDelay(m_probesInARound-1);
     }
     else
     {
@@ -361,12 +376,13 @@ OWDHost::EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs)
       //! if packet on slow path arrived before
       if(m_arrivalPositionSlowPacket <m_arrivalPositionLastProbeBeforeSlowPath ){
         --m_arrivalPositionLastProbeBeforeSlowPath;
+        m_currentRoundStats.ReverseFastSubflow = ForwardSlowSubflowId();
       }
 
       NS_LOG_INFO("Probing succeeded in cornering OWD ");
 
       //!
-      m_estimatedForwardDeltaOwd = GetDelayOfProbe(m_arrivalPositionLastProbeBeforeSlowPath);
+      m_estimatedForwardDeltaOwd = GetProbeDelay(m_arrivalPositionLastProbeBeforeSlowPath);
     }
 
         //! We finished a round => reset
@@ -374,10 +390,17 @@ OWDHost::EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs)
       << "Subflow [" << sockId << "] forward delay looks shorter: "
       );
 
-    //! TODO we
+    //! TODO we need to update values
 
     m_currentRoundStats.EstimatedForwardDeltaOWD = m_estimatedForwardDeltaOwd;
+    // TODO forward fastsubflow could be a float between 0 and 1, an average of past values.
+    // If > 0.5 then => 1 else 0 for instance. Does not work with several
+    // Or compare a smoothed score, each path would have a score.
+    m_currentRoundStats.ForwardFastSubflow = m_estimatedForwardDeltaOwd;
+
     m_owdRoundStats.push_back(m_currentRoundStats);
+
+    //! reset
     m_arrivalPositionLastProbeBeforeSlowPath = -1;
     m_arrivalPositionFirstProbeAfterSlowPath = -1;
     m_arrivalPositionSlowPacket = -1;
@@ -390,8 +413,13 @@ OWDHost::EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs)
       std::stringstream dump;
       DumpOwdSamples(dump);
       NS_LOG_INFO("Dumping OWD samples: \n" << dump.str() );
+
     }
-    return;
+    else
+    {
+      // Simulator::Schedule (Seconds (0.0), &OWDHost::SampleRTTStart, this);
+      EstimateOWDStartNewRound();
+    }
   }
 
 }
@@ -420,7 +448,7 @@ OWDHost::SamplingRTTRecv(int sockId, const SeqTsHeader& seqTs)
   {
     NS_LOG_INFO("Updated fastest subflow id [" << sockId << "]") ;
     m_highestAcknowledgedAckInRound = seqTs.GetSeq();
-    m_currentRoundStats.FastestForwardSubflow = sockId;
+    m_currentRoundStats.ForwardFastSubflow = sockId;
   }
 
   //! if we received echoed packet from all subflows
@@ -438,14 +466,20 @@ OWDHost::SamplingRTTRecv(int sockId, const SeqTsHeader& seqTs)
     //! if we finished enough rounds
     if( GetRoundNo() >= (int)m_sampleRTTmaxRounds)
     {
-      // Then we shall change mode to start checking OWDs
-      ChangeMode(OWDEstimation);
-
       std::stringstream dump;
       DumpRttSamples(dump);
       NS_LOG_INFO("Dumping RTT samples: \n" << dump.str() );
+
+      // Then we shall change mode to start checking OWDs
+      ChangeMode(OWDEstimation);
+
+      EstimateOWDStartNewRound();
     }
-    return;
+    else
+    {
+      //! start a new RTT round
+      SampleRTTStart();
+    }
   }
 
   //! Here it means we still expect a seq on another path
@@ -494,7 +528,7 @@ OWDHost::ForwardSlowSubflowId() const
 RoundStats::RoundStats()
 {
     //!
-  FastestForwardSubflow = -1;
+  ForwardFastSubflow = -1;
 //  RealReverseDeltaOWD;
 //  Time EstimatedForwardDeltaOWD = 0;
 //  Time RealForwardDeltaOWD = 0;
@@ -598,10 +632,10 @@ OWDHost::DumpRttSamples(std::ostream& os) const
   {
     //!
 
-    os << std::distance(it, m_rttRoundStats.begin() )
+    os << std::distance(m_rttRoundStats.begin(), it)
       << " " << it->rtt[0].GetMicroSeconds()
       << " " << it->rtt[1].GetMicroSeconds()
-      << " " << it->FastestForwardSubflow
+      << " " << it->ForwardFastSubflow
       << std::endl;
   }
 
@@ -619,20 +653,19 @@ OWDHost::DumpOwdSamples(std::ostream& os) const
   for(RoundStatsCollection::const_iterator it = m_owdRoundStats.begin(); it != m_owdRoundStats.end(); it++)
   {
     //!
-    os <<  std::distance(it, m_rttRoundStats.begin() )
+    // TODO Display only when they change
+    os <<  std::distance(m_owdRoundStats.begin(), it )
       << " " << it->rtt[0].GetMicroSeconds()
       << " " << it->rtt[1].GetMicroSeconds()
       << " " << it->RealForwardDeltaOWD[0].GetMicroSeconds()
       << " " << it->RealReverseDeltaOWD[0].GetMicroSeconds()
       << " " << it->RealForwardDeltaOWD[1].GetMicroSeconds()
       << " " << it->RealReverseDeltaOWD[1].GetMicroSeconds()
-      << " " << it->EstimatedForwardDeltaOWD[0].GetMicroSeconds()
-      << " " << it->EstimatedReverseDeltaOWD[0].GetMicroSeconds()
-      << " " << it->EstimatedForwardDeltaOWD[1].GetMicroSeconds()
-      << " " << it->EstimatedReverseDeltaOWD[1].GetMicroSeconds()
+      << " " << it->EstimatedForwardDeltaOWD.GetMicroSeconds()
+      << " " << it->EstimatedReverseDeltaOWD.GetMicroSeconds()
       << " " << (it->rtt[0].GetMicroSeconds()/2)
       << " " << (it->rtt[1].GetMicroSeconds()/2)
-      << " " << it->FastestForwardSubflow << std::endl;
+      << " " << it->ForwardFastSubflow << std::endl;
   }
 
 }
@@ -660,7 +693,8 @@ OWDHost::Send(Ptr<Socket> sock, uint32_t seqNb)
 
   NS_LOG_INFO ( "Send seq nb [" << seqTs.GetSeq() << "] from " << InetSocketAddress::ConvertFrom(addr).GetIpv4()
 //               << " to "
-               <<" at Time: " <<(Simulator::Now ()).GetMicroSeconds() << "µs "
+//.GetMilliSeconds()
+               <<" at Time: " <<(Simulator::Now ()) << ""
                " with timestamp [" << seqTs.GetTs() << "]"
                );
 }

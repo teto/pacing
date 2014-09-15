@@ -1,4 +1,4 @@
-WITH_GDB=0
+WITH_GDB=1
 #NS_LOG="$NS_LOG:TraceHelper:PointToPointHelper"
 NS_LOG="OwdMainTest=*|prefix_all"
 NS_LOG="$NS_LOG:Ipv4L3Protocol=warn|error"

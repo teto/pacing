@@ -410,6 +410,12 @@ int main()
   serverApp->SetStartTime (Seconds (0.0));
   serverApp->SetStopTime (Seconds (4.0));
 
+
+  // To debug, ms resolution is easier to read
+  // when
+//  Time::SetResolution (Time::NS);
+  Time::SetResolution (Time::MS);
+
   Simulator::Run ();
 
 
@@ -440,7 +446,7 @@ int main()
 
 
   Simulator::Destroy ();
-//  Time::SetResolution (Time::NS);
+
   NS_LOG_UNCOND("test");
   return 0;
 }
