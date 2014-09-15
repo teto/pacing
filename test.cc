@@ -239,10 +239,10 @@ int main()
 
 
   Time delayCtoS_1 = MilliSeconds(30);
-  Time delayCtoS_2 = MilliSeconds(30);
+  Time delayCtoS_2 = MilliSeconds(10);
 
   Time delayStoC_1 = MilliSeconds(100);
-  Time delayStoC_2 = MilliSeconds(100);
+  Time delayStoC_2 = MilliSeconds(200);
 
 //  DifferentiatedPacingForOWDEstimation test;
 //  test.SetupSimulation();

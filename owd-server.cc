@@ -135,28 +135,30 @@ OwdServer::HandleRead (Ptr<Socket> socket)
     // update sequencer
     m_sequencer.AckSeqNb( seqTs.GetSeq() );
 
-    NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server received packet with TS ["
-                 << seqTs.GetTs() << "] and seq [" << seqTs.GetSeq() << "] from "
+    NS_LOG_INFO ("At time " << Simulator::Now ().GetMilliSeconds()  << "µs server received packet with sender TS ["
+                 << seqTs.GetSenderTs().GetMilliSeconds()
+                 << "] and receiver TS [" << seqTs.GetReceiverTs().GetMilliSeconds()
+                 << "] and seq [" << seqTs.GetSeq() << "] from "
                  << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
 //                   << " port " << InetSocketAddress::ConvertFrom (from).GetPort ()
                  );
 
-//      packet->RemoveAllPacketTags ();
-//      packet->RemoveAllByteTags ();
+    packet->RemoveAllPacketTags ();
+    packet->RemoveAllByteTags ();
 
     //  Update header value
-    seqTs.SetReceiverTs( (uint64_t) seqTs.GetTs().GetTimeStep() );
+    seqTs.SetReceiverTs( (uint64_t) seqTs.GetSenderTs().GetTimeStep() );
     seqTs.SetSenderTs( (uint64_t)Simulator::Now ().GetTimeStep () );
 
     seqTs.SetSeq( m_sequencer.GetHighestRcvdInOrderSeqNb() );
     packet->AddHeader(seqTs);
     socket->SendTo (packet, 0, from);
 
-    NS_LOG_INFO ("At time " << Simulator::Now ().GetMicroSeconds()  << "µs server sent "
-                 << " Sender TS " << seqTs.GetTs()
+    NS_LOG_INFO ("At time " << Simulator::Now ().GetMilliSeconds()  << "µs server sends "
+                 << " Sender TS " << seqTs.GetSenderTs()
                  << " Receiver TS " << seqTs.GetReceiverTs()
 
-                 << " from " << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
+//                 << " from " << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
 //                   << " port " << InetSocketAddress::ConvertFrom (from).GetPort ()
                  );
 

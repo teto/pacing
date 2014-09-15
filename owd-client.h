@@ -35,17 +35,18 @@
 #include "ns3/seq-ts-header.h"
 
 #include "config.h"
+#include "sequencer.h"
 
 using namespace ns3;
 
 
 
-typedef struct _rttSample
-{
-Time real;      //!< computed thanks to ns3 clock synchronization
-Time estimated; //!< estimated via our technique
-Time halfRTT;   //!< legacy method of dividing RTT by half
-} RttSample;
+//typedef struct _rttSample
+//{
+//Time real;      //!< computed thanks to ns3 clock synchronization
+//Time estimated; //!< estimated via our technique
+//Time halfRTT;   //!< legacy method of dividing RTT by half
+//} RttSample;
 
 //class RttRoundStats
 //{
@@ -61,24 +62,28 @@ class RoundStats
 public:
   RoundStats();
   Time EstimatedForwardDeltaOWD;
-  Time RealForwardDeltaOWD;
+  Time RealForwardDeltaOWD[10];
   Time EstimatedReverseDeltaOWD;
-  Time RealReverseDeltaOWD;
+  Time RealReverseDeltaOWD[10];
   Time rtt[10];
-  int FastestForwardSubflow;  //!< Used for RTT sampling
+  Time EstimatedForwardDelay[10];
+  Time EstimatedReverseDelay[10];
+  int ForwardFastSubflow;  //!< Used
 //RttSample samples[10];
 };
 
+typedef std::vector<RoundStats> RoundStatsCollection;
 
 //std::vector<fastestSocket>
 
 /**
- * \ingroup OWDHostserver
- * \class OWDHost
- * \brief A Udp client. Sends UDP packet carrying sequence number and time stamp
- *  in their payloads
+OWDHost first runs a few RTT samplings to guess which subflow is the first to arrive at the receiver.
+When enough samples have been gathered, it switches to ForwardDeltaOWD estimation mode in which it delays packets
+on fast path in order to guess DEltaOWD.
+Once enough DeltaOWD estimations have been done, then program closes
 
- It should change mode automatically
+Ideally it should be able to switch back and forth between RTT and OWD sampling in case delays change much o
+
  *
  */
 class OWDHost : public Application
@@ -100,10 +105,23 @@ public:
   }
 
   /**
+  Returns the delay to wait after a packet on slow path
+  before sending the "i" th probe
+  */
+  Time GetDelayOfProbe(uint8_t i) const;
+
+  /**
   We suppose there is no packet loss
   **/
   void SamplingRTTRecv(int sockId, const SeqTsHeader& seqTs);
   void EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs);
+
+  /** Outputs records in os */
+  void DumpRttSamples(std::ostream& os) const;
+  void DumpOwdSamples(std::ostream& os) const;
+
+  int ForwardFastSubflowId() const;
+  int ForwardSlowSubflowId() const;
 
 protected:
   virtual void DoDispose (void);
@@ -141,7 +159,7 @@ private:
   /**
   Will schedule different sends on different subflows in order to compute
   **/
-  void EstimateOWDStart ( );
+  void EstimateOWDStartNewRound ( );
 
   /** Utility function used by both modes.
   Send a timestampped packet with "seqNb" on socket "sock"
@@ -153,11 +171,12 @@ private:
 //  TcpTxBuffer m_txBuffer; //!< Just used to see what packets.
 
   //! How many packets we can send in parallel
-  uint32_t m_probesInARound;
-  uint32_t m_sampleRTTmaxRounds;  //!< How many times we sample the RTT before changing mode
+  const uint32_t m_probesInARound;  //!< Number of probes in a round (default 3);
+  const uint32_t m_sampleRTTmaxRounds;  //!< How many times we sample the RTT before changing mode
+  const uint32_t m_owdMaxRounds;  //!< How many times we sample the RTT before changing mode
 
   //! Sampled RTTs
-  std::vector<RttSample> m_RttSamples[10]; //!< one tracedvalue per socket (supports max 10 sockets)
+//  std::vector<RttSample> m_RttSamples[10]; //!< one tracedvalue per socket (supports max 10 sockets)
 
 
   Mode m_currentMode; //!< decide what actions to take
@@ -176,11 +195,29 @@ private:
 
   EventId m_sendEvent; //!< Event to send the next packet
 
-  std::vector<RoundStats> m_owdRoundStats;
-  std::vector<RoundStats> m_rttRoundStats;
+  RoundStatsCollection m_owdRoundStats;
+  RoundStatsCollection m_rttRoundStats;
   RoundStats m_currentRoundStats; //!<
 //  std::vector<Time> m_rttBuffer;  //!<
 //  std::vector< std::pair<int,int> > m_forwardOrder; //!< socket no/position registered by packets of nb(sockets) records
+
+
+  //// Variables used in OWD mode
+  ////////////////////////////////////////////////////////
+  int m_forwardFastSubflow; //!<
+  Time m_estimatedForwardDeltaOwd;
+
+  /** arrival position at the server side, not on the client sie
+  so it means order is deduced from seq nb
+  */
+  int m_arrivalPositionSlowPacket;  //!<
+  int m_arrivalPositionLastProbeBeforeSlowPath;  //!<
+  int m_arrivalPositionFirstProbeAfterSlowPath;  //!<
+
+  // Can be deduced from precedent variable
+//  Time m_timeOfLastProbeBeforeSlowPath; //!< Not necessarily set
+//  Time m_timeOfFirstProbeAfterSlowPath; //!< Not necessarily set
+//  Sequencer m_sequencer;  //!< No need ?
 };
 
 
