@@ -111,7 +111,7 @@ public:
   Returns the delay to wait after a packet on slow path
   before sending the "i" th probe
   */
-  Time GetProbeDelay(uint8_t i) const;
+  virtual Time GetProbeDelay(uint8_t i) const = 0;
 
   /**
   We suppose there is no packet loss
@@ -125,6 +125,14 @@ public:
 
   int ForwardFastSubflowId() const;
   int ForwardSlowSubflowId() const;
+
+  virtual void NewPacketFromSlowPath(int position, Time arrivalTime,SeqTsHeader&) = 0;
+  virtual void NewPacketFromFastPath(int position, Time arrivalTime,SeqTsHeader&) = 0;
+
+  //
+  virtual bool ReachedConvergence() const = 0;
+
+  virtual RoundStats FinishRound() = 0;
 
 protected:
   virtual void DoDispose (void);
@@ -176,7 +184,7 @@ private:
   //! How many packets we can send in parallel
 //  const uint32_t m_probesInARound;  //!< Number of probes in a round (default 3);
   const uint32_t m_sampleRTTmaxRounds;  //!< How many times we sample the RTT before changing mode
-  const uint32_t m_owdMaxRounds;  //!< How many times we sample the RTT before changing mode
+//  const uint32_t m_owdMaxRounds;  //!< How many times we sample the RTT before changing mode
 
   //! Sampled RTTs
 //  std::vector<RttSample> m_RttSamples[10]; //!< one tracedvalue per socket (supports max 10 sockets)
@@ -196,28 +204,22 @@ private:
   std::vector<Ptr<Socket> > m_sockets;
   Ptr<Node> m_peer;
 
-  EventId m_sendEvent; //!< Event to send the next packet
+//  EventId m_sendEvent; //!< Event to send the next packet
 
   RoundStatsCollection m_owdRoundStats;
   RoundStatsCollection m_rttRoundStats;
-  RoundStats m_currentRoundStats; //!<
+//  RoundStats m_currentRoundStats; //!<
 //  std::vector<Time> m_rttBuffer;  //!<
 //  std::vector< std::pair<int,int> > m_forwardOrder; //!< socket no/position registered by packets of nb(sockets) records
 
 
-  Ptr<PacingStrategy> m_strategy;
+//  Ptr<PacingStrategy> m_strategy;
 
   //// Variables used in OWD mode
   ////////////////////////////////////////////////////////
   int m_forwardFastSubflow; //!<
   Time m_estimatedForwardDeltaOwd;
 
-  /** arrival position at the server side, not on the client sie
-  so it means order is deduced from seq nb
-  */
-  int m_arrivalPositionSlowPacket;  //!<
-  int m_arrivalPositionLastProbeBeforeSlowPath;  //!<
-  int m_arrivalPositionFirstProbeAfterSlowPath;  //!<
 
   // Can be deduced from precedent variable
 //  Time m_timeOfLastProbeBeforeSlowPath; //!< Not necessarily set

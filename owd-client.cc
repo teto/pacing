@@ -153,24 +153,24 @@ OWDHost::ChangeMode(Mode mode)
 {
   NS_LOG_FUNCTION(this << "From mode " << modeNames[m_currentMode] << " to " << modeNames[mode]);
 
+  NS_ASSERT(m_inflight );
   // Check that every ACK in flight has been acknowledged
 
   m_currentMode=mode;
 
   // Reset current round stats
-  RoundStats stats;
-  m_currentRoundStats = stats;
+//  RoundStats stats;
+//  m_currentRoundStats = stats;
 
 
-  m_arrivalPositionLastProbeBeforeSlowPath = -1;
-  m_arrivalPositionFirstProbeAfterSlowPath = -1;
+
 
 }
 
 
 //
 void
-OWDHost::EstimateOWDStartNewRound(void)
+OWDHost::EstimateOWDStartNewRound(int& )
 {
   NS_LOG_FUNCTION (this);
   NS_ASSERT( m_currentMode == OWDEstimation);
@@ -237,27 +237,7 @@ OWDHost::EstimateOWDStartNewRound(void)
 
 
 
-Time
-OWDHost::GetProbeDelay(uint8_t i) const
-{
-  NS_ASSERT_MSG( (i >= 0) && (i < m_probesInARound),"There is no probe with such an id");
-  /**
-  The choice of the delay between probe is really critical for the performance of the algorithm
-  (speed of convergence, overhead etc...).
-  Here we choose a constant delay for the sake of simplicity but we can imagine many schemes depending
-  on the variance of the deltaOWD, the number of available probes (depend on the size of the global/local windows etc...)
-  */
 
-  Time delayBetweenProbes = MilliSeconds(5);
-
-
-  //! need to go into signed mode
-  int j = i;
-  //! so as to shift j, since we want probes to be centered around DeltaOWD.
-  j -= m_probesInARound/2;
-  NS_LOG_INFO("j [" << j << "]");
-  return (m_estimatedForwardDeltaOwd + MilliSeconds(delayBetweenProbes.GetMilliSeconds()*j) );
-}
 
 void
 OWDHost::EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs)
@@ -269,67 +249,16 @@ OWDHost::EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs)
 
   int arrivalPosition = m_probesInARound - m_inflight;
 
-  // We update the RTT (every probe will overwrite it but it's no problem when delay constant)
-  m_currentRoundStats.rtt[sockId ] = TimeStep(Simulator::Now().GetTimeStep() ) - seqTs.GetReceiverTs();
+  Time timeOfArrival = Simulator::Now();
 
-  // This is real because clocks of client & server are synchronized
-  m_currentRoundStats.RealForwardDeltaOWD[sockId] = seqTs.GetSenderTs() - seqTs.GetReceiverTs();
-  m_currentRoundStats.RealReverseDeltaOWD[sockId] = Simulator::Now() - seqTs.GetSenderTs();
-
-  // If
-  if( sockId == ForwardSlowSubflowId())
+  if( sockId = ForwardFastSubflowId())
   {
-    // If arrived first then it will be 0, if last, it will be m_probesInARound
-    m_arrivalPositionSlowPacket = arrivalPosition;
-
-    // Update the
-//    if( seqTs.GetSeq() == 0)
-//    {
-//      /**
-//      means packet on slow path arrives before all probes, thus we should reduce the DeltaOWD.
-//      Same as for the interval choice between probes, this is critical to the algorithm.
-//
-//      Here we decrease by 10% the value of the estimated forward deltaOwd.
-//      **/
-//      m_estimatedForwardDeltaOwd -= 0.1*m_estimatedForwardDeltaOwd;
-//    }
-//    else
-//    {
-//      m_highestAcknowledgedAckInRound = 1;
-//    }
-
+    NewPacketFromFastPath( arrivalPosition, timeOfArrival, seqTs );
   }
-  //! Packet received from fast subflow
   else
   {
-    NS_ASSERT( sockId == ForwardFastSubflowId() );
-
-    //! Here we want to find the probe that arrived at the server last before the first packet on slow path
-    //! so
-    if(seqTs.GetSeq() == 0)
-    {
-      NS_LOG_INFO("Probe arrived at the server before slow path packet");
-      m_arrivalPositionLastProbeBeforeSlowPath = arrivalPosition;
-    }
-    else
-    {
-      NS_ASSERT(seqTs.GetSeq() == 1);
-      if(m_arrivalPositionFirstProbeAfterSlowPath < 0)
-      {
-        NS_LOG_INFO("First probe arrived at the server after slow path packet");
-        m_arrivalPositionFirstProbeAfterSlowPath = arrivalPosition;
-      }
-    }
+    NewPacketFromSlowPath( arrivalPosition, timeOfArrival, seqTs );
   }
-
-
-//  if( seqTs.GetSeq() < m_highestAcknowledgedAckInRound)
-//  {
-//    NS_LOG_INFO("Updated fastest subflow id [" << sockId << "]") ;
-//    m_highestAcknowledgedAckInRound = seqTs.GetSeq();
-//    m_currentRoundStats.ForwardFastSubflow = sockId;
-//  }
-//
 
 
   //! if we received echoed packet from all subflows
@@ -337,79 +266,11 @@ OWDHost::EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs)
   {
 
 
-    /**  TODO need now to update OWD estimation
-    */
-
-    /* If all probes arrived afterreception of packet on slow path, then it means
-    we waited too long before sending probes, ie we overestimated the ForwardDeltaOWD
-    */
-    if(m_arrivalPositionLastProbeBeforeSlowPath < 0)
-    {
-      /*
-      Same as for the interval choice between probes, the reduction logic is critical to the algorithm
-      performance
-
-      As a rule of thumb (should improve it) we decrease by 10% the value of the estimated forward deltaOwd.
-
-      As usua, Time values should not be too small to match real hardware clocks and network pacing values
-      */
-      NS_LOG_INFO("All probes arrived after packet on slow path");
-      // TODO m_estimatedForwardDeltaOwd*0.1
-      m_estimatedForwardDeltaOwd -= GetProbeDelay(0);
-
-      // in this case we can't deduce the ReverseDeltaOWD so we copy the one from previous sampling ?
-    }
-    /* this is the opposite here, all probes arrived before packet on slow path, ie we underestimated the DeltaOWD
-    That should be sthg like this
-    std::max(10ms, 0.1* currentValue)
-    */
-    else if(m_arrivalPositionFirstProbeAfterSlowPath < 0)
-    {
-      NS_LOG_INFO("All probes arrived before packet on slow path");
-//      m_estimatedForwardDeltaOwd += 0.1*m_estimatedForwardDeltaOwd;
-      m_estimatedForwardDeltaOwd += GetProbeDelay(m_probesInARound-1);
-    }
-    else
-    {
-      /* Packet on slow path arrived between 2 probes so we can correctly update the DeltaOWD */
-      //! Only the arrival between probes interest us so we have to decrease by one position
-      //! if packet on slow path arrived before
-      if(m_arrivalPositionSlowPacket <m_arrivalPositionLastProbeBeforeSlowPath ){
-        --m_arrivalPositionLastProbeBeforeSlowPath;
-        m_currentRoundStats.ReverseFastSubflow = ForwardSlowSubflowId();
-      }
-
-      NS_LOG_INFO("Probing succeeded in cornering OWD ");
-
-      //!
-      m_estimatedForwardDeltaOwd = GetProbeDelay(m_arrivalPositionLastProbeBeforeSlowPath);
-    }
-
-        //! We finished a round => reset
-    NS_LOG_INFO("Owd round " << GetRoundNo() << " finished  (out of " << m_owdMaxRounds << "). "
-      << "Subflow [" << sockId << "] forward delay looks shorter: "
-      );
-
-    //! TODO we need to update values
-
-    m_currentRoundStats.EstimatedForwardDeltaOWD = m_estimatedForwardDeltaOwd;
-    // TODO forward fastsubflow could be a float between 0 and 1, an average of past values.
-    // If > 0.5 then => 1 else 0 for instance. Does not work with several
-    // Or compare a smoothed score, each path would have a score.
-    m_currentRoundStats.ForwardFastSubflow = m_estimatedForwardDeltaOwd;
-
-    m_owdRoundStats.push_back(m_currentRoundStats);
-
-    //! reset
-    m_arrivalPositionLastProbeBeforeSlowPath = -1;
-    m_arrivalPositionFirstProbeAfterSlowPath = -1;
-    m_arrivalPositionSlowPacket = -1;
 
     //! if we finished enough rounds
-    if( GetRoundNo() >= (int)m_owdMaxRounds)
+    if( ReachedConvergence() )
     {
       // Then we have finished the experimentation and we should exit.
-
       std::stringstream dump;
       DumpOwdSamples(dump);
       NS_LOG_INFO("Dumping OWD samples: \n" << dump.str() );

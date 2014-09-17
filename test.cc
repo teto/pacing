@@ -395,7 +395,7 @@ int main()
 //  p2p.EnablePcapAll ("owd");
 
   // Then install application
-  Ptr<OWDHost> clientApp = CreateObject<OWDHost>();
+  Ptr<OWdClientBasic> clientApp = CreateObject<OWdClientBasic>();
   Ptr<OwdServer> serverApp = CreateObject<OwdServer>();
 
   clientApp->SetPeer( nS );
