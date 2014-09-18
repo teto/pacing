@@ -34,13 +34,16 @@
 #include "ns3/traced-value.h"
 #include "ns3/seq-ts-header.h"
 
+#include <map>
+
 #include "config.h"
 #include "sequencer.h"
+
 //#include "strategy.h"
 
 using namespace ns3;
 
-class PacingStrategy;
+//class PacingStrategy;
 
 
 //typedef struct _rttSample
@@ -56,20 +59,47 @@ class PacingStrategy;
 //  Time rtt[10];
 //};
 
+
+class PacketStats
+{
+public:
+  Time DepartureTime;
+  Time RealForwardDelay;
+  Time RealReverseDelay;
+//  Time ArrivalTime;
+};
+
 /**
 Only FastestForwardSubflow and rtt are used in RTTsampling mode
+
+Only positive values should be plotted
+DeltaOWD are always positive
 **/
 class RoundStats
 {
 public:
   RoundStats();
-  Time EstimatedForwardDeltaOWD;
-  Time RealForwardDeltaOWD[10];
-  Time EstimatedReverseDeltaOWD;
-  Time RealReverseDeltaOWD[10];
+
+  Time EstimatedForwardDeltaOWD;  //! always positive
+  Time EstimatedReverseDeltaOWD;  //! always positive (not plotted otherwise)
+
+  Time RealForwardDelay[10];
+  Time RealReverseDelay[10];
+
+//  Time LowerBoundForForwardDelay()
+// Can be computed
+//  Time RealForwardDeltaOWD;
+//  Time RealReverseDeltaOWD;
+
+
   Time rtt[10];
+
+  // 0 means inadequate
   Time EstimatedForwardDelay[10];
   Time EstimatedReverseDelay[10];
+
+  // both may differ
+  // negative means inadequate
   int ForwardFastSubflow;  //!< Used
   int ReverseFastSubflow;  //!< Used
 //RttSample samples[10];
@@ -107,6 +137,7 @@ public:
     m_peer = peer;
   }
 
+  virtual int GetNumberOfProbesThisRound() = 0;
   /**
   Returns the delay to wait after a packet on slow path
   before sending the "i" th probe
@@ -118,6 +149,7 @@ public:
   **/
   void SamplingRTTRecv(int sockId, const SeqTsHeader& seqTs);
   void EstimateOWDRecv(int sockId, const SeqTsHeader& seqTs);
+  virtual void StartNewOwdEstimationRound() = 0;
 
   /** Outputs records in os */
   void DumpRttSamples(std::ostream& os) const;
@@ -126,8 +158,8 @@ public:
   int ForwardFastSubflowId() const;
   int ForwardSlowSubflowId() const;
 
-  virtual void NewPacketFromSlowPath(int position, Time arrivalTime,SeqTsHeader&) = 0;
-  virtual void NewPacketFromFastPath(int position, Time arrivalTime,SeqTsHeader&) = 0;
+  virtual void NewPacketFromSlowPath(int position, Time arrivalTime,const SeqTsHeader&) = 0;
+  virtual void NewPacketFromFastPath(int position, Time arrivalTime,const SeqTsHeader&) = 0;
 
   //
   virtual bool ReachedConvergence() const = 0;
@@ -136,8 +168,8 @@ public:
 
 protected:
   virtual void DoDispose (void);
-
-private:
+  Mode m_currentMode; //!< decide what actions to take
+//private:
   void ChangeMode(Mode mode);
 
   virtual void StartApplication (void);
@@ -176,7 +208,7 @@ private:
   Send a timestampped packet with "seqNb" on socket "sock"
   \param seqNb sequence number to send
   **/
-  void Send(Ptr<Socket> sock, uint32_t seqNb);
+  void Send(Ptr<Socket> sock, uint32_t seqNb,uint64_t ts);
 
 //  uint32_t m_count; //!< Maximum number of packets the application will send
 //  TcpTxBuffer m_txBuffer; //!< Just used to see what packets.
@@ -190,7 +222,6 @@ private:
 //  std::vector<RttSample> m_RttSamples[10]; //!< one tracedvalue per socket (supports max 10 sockets)
 
 
-  Mode m_currentMode; //!< decide what actions to take
 
 
 //  uint32_t m_round;   //!< nb of rounds already accomplished
@@ -198,8 +229,8 @@ private:
 
   // maybe this should go away
 //  Time m_interval; //!< Packet inter-send time
-
-  uint32_t m_highestAcknowledgedAckInRound;
+  uint32_t m_lowestRoundSeq;
+//  uint32_t m_highestAcknowledgedAckInRound;
   uint32_t m_inflight; //!< Nb of packets in flight. Starts at 0
   std::vector<Ptr<Socket> > m_sockets;
   Ptr<Node> m_peer;
@@ -208,7 +239,7 @@ private:
 
   RoundStatsCollection m_owdRoundStats;
   RoundStatsCollection m_rttRoundStats;
-//  RoundStats m_currentRoundStats; //!<
+  RoundStats m_currentRoundStats; //!<
 //  std::vector<Time> m_rttBuffer;  //!<
 //  std::vector< std::pair<int,int> > m_forwardOrder; //!< socket no/position registered by packets of nb(sockets) records
 
@@ -218,9 +249,9 @@ private:
   //// Variables used in OWD mode
   ////////////////////////////////////////////////////////
   int m_forwardFastSubflow; //!<
-  Time m_estimatedForwardDeltaOwd;
-
-
+//  Time m_estimatedForwardDeltaOwd;
+//  int m_probeNo;
+  Time m_timeOfFirstSentPacket;
   // Can be deduced from precedent variable
 //  Time m_timeOfLastProbeBeforeSlowPath; //!< Not necessarily set
 //  Time m_timeOfFirstProbeAfterSlowPath; //!< Not necessarily set
