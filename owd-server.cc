@@ -135,9 +135,9 @@ OwdServer::HandleRead (Ptr<Socket> socket)
     // update sequencer
     m_sequencer.AckSeqNb( seqTs.GetSeq() );
 
-    NS_LOG_INFO ("At time " << Simulator::Now ().GetMilliSeconds()  << "µs server received packet with sender TS ["
-                 << seqTs.GetSenderTs().GetMilliSeconds()
-                 << "] and receiver TS [" << seqTs.GetReceiverTs().GetMilliSeconds()
+    NS_LOG_INFO ("At time " << Simulator::Now ()  << " server received packet with sender TS ["
+                 << seqTs.GetSenderTs()
+                 << "] and receiver TS [" << seqTs.GetReceiverTs()
                  << "] and seq [" << seqTs.GetSeq() << "] from "
                  << InetSocketAddress::ConvertFrom (from).GetIpv4 ()
 //                   << " port " << InetSocketAddress::ConvertFrom (from).GetPort ()
@@ -154,7 +154,8 @@ OwdServer::HandleRead (Ptr<Socket> socket)
     packet->AddHeader(seqTs);
     socket->SendTo (packet, 0, from);
 
-    NS_LOG_INFO ("At time " << Simulator::Now ().GetMilliSeconds()  << "µs server sends "
+    NS_LOG_INFO ("At time " << Simulator::Now () << " server sends "
+                 << "seq [" << m_sequencer.GetHighestRcvdInOrderSeqNb() << "]"
                  << " Sender TS " << seqTs.GetSenderTs()
                  << " Receiver TS " << seqTs.GetReceiverTs()
 

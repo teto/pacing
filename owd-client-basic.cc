@@ -7,7 +7,7 @@
 
 
 
-NS_LOG_COMPONENT_DEFINE ("OwdClient");
+NS_LOG_COMPONENT_DEFINE ("OwdClientBasic");
 
 OWdClientBasic::OWdClientBasic() :
     m_probesInARound(3)
@@ -46,12 +46,26 @@ OWdClientBasic::StartNewOwdEstimationRound()
   Time t;
   m_slowPacket = std::make_pair(t,t);
 
-  //! Previous round only used 2 seq nb
-  m_lowestRoundSeq += 2;
+
+
+  if( GetRoundNo() == 0)
+  {
+    // If first round, we decide upon the RTTsampling phase
+    NS_ASSERT( !m_rttRoundStats.empty() );
+//    if(m_rttRoundStats.back().rtt[0] > m_rttRoundStats.back().rtt[1])
+//    {
+//      m_forwardFastSubflow =
+//    }
+    m_forwardFastSubflow = m_owdRoundStats.back().ForwardFastSubflow;
+  }
+  else {
+    m_forwardFastSubflow = m_owdRoundStats.back().ForwardFastSubflow;
+  }
 
   // First we should estimate the OWD from the past samples
-  NS_ASSERT( ForwardSlowSubflowId() >= 0 && ForwardSlowSubflowId() < (int)m_sockets.size() );
+//  NS_ASSERT( ForwardSlowSubflowId() >= 0 && ForwardSlowSubflowId() < (int)m_sockets.size() );
   NS_ASSERT( ForwardFastSubflowId() >= 0 && ForwardFastSubflowId() < (int)m_sockets.size() );
+
   Ptr<Socket> slowSocket = m_sockets[ForwardSlowSubflowId()];
   Ptr<Socket> fastSocket = m_sockets[ForwardFastSubflowId()];
 
@@ -232,6 +246,8 @@ OWdClientBasic::FinishRound()
 {
   NS_ASSERT_MSG(m_inflight ==0, "There are still packets inflight");
 
+  //! Previous round only used 2 seq nb
+  m_lowestRoundSeq += 2;
 
   //! TODO average OWD using m_probes packet stats
   int id = ForwardFastSubflowId();
@@ -312,8 +328,25 @@ OWdClientBasic::FinishRound()
       m_currentRoundStats.EstimatedReverseDeltaOWD = Abs( reverseDeltaOWD );
 
       // TODO now need to update the OWD estimations
+      // TO do that we estimate the arrival time at the remote host
+      // to do that we find the fastest round trip time without considering
+      // RTT/2
+      Time halfSmallestRtt =
+      // take the time arrival of the first packet that came back after slow packet arrived at remote host
+          std::min( m_slowPacket.first, m_arrivalTimeFirstProbeAfterSlowPath)
+        // minus the time of the first packet sent on forward fast path that arrived
+        // after packet on slow path
+          -m_probes[m_arrivalTimeFirstProbeAfterSlowPath].DepartureTime;
 
+      // Finally we do RTT/2
+      halfSmallestRtt =  MilliSeconds( halfSmallestRtt.GetMilliSeconds() / 2 );
 
+      m_currentRoundStats.EstimatedForwardDelay[ForwardFastSubflowId()] = halfSmallestRtt ;
+      m_currentRoundStats.EstimatedReverseDelay[ForwardFastSubflowId()] = m_currentRoundStats.rtt[ForwardFastSubflowId()] - m_currentRoundStats.EstimatedForwardDelay[ForwardFastSubflowId()];
+
+      //ForwardSlowSubflowId
+      m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()] = GetProbeDelay(0) + m_currentRoundStats.EstimatedForwardDelay[ForwardFastSubflowId()];
+      m_currentRoundStats.EstimatedReverseDelay[ForwardSlowSubflowId()] = m_currentRoundStats.rtt[ForwardSlowSubflowId()] -m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()];
       return m_currentRoundStats;
   }
 

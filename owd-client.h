@@ -144,6 +144,9 @@ public:
   */
   virtual Time GetProbeDelay(uint8_t i) const = 0;
 
+  RoundStats
+  FinishRttRound();
+
   /**
   We suppose there is no packet loss
   **/

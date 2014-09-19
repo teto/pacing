@@ -53,7 +53,9 @@ static const char* modeNames[] = {
 
 OWDHost::OWDHost () :
 //  m_probesInARound(3),
-  m_sampleRTTmaxRounds(3),m_lowestRoundSeq(0)
+  m_sampleRTTmaxRounds(3),
+  // if we start at 0, then sequencer does not work
+  m_lowestRoundSeq(1)
 //  ,m_owdMaxRounds(10)
 
 {
@@ -152,9 +154,9 @@ OWDHost::StopApplication (void)
 void
 OWDHost::ChangeMode(Mode mode)
 {
-  NS_LOG_FUNCTION(this << "From mode " << modeNames[m_currentMode] << " to " << modeNames[mode]);
+  NS_LOG_FUNCTION(this << "From mode [" << modeNames[m_currentMode] << "] to [" << modeNames[mode] << "]");
 
-  NS_ASSERT(m_inflight );
+  NS_ASSERT(m_inflight == 0);
   // Check that every ACK in flight has been acknowledged
 
   m_currentMode=mode;
@@ -303,14 +305,14 @@ OWDHost::SamplingRTTRecv(int sockId, const SeqTsHeader& seqTs)
 
   // TODO record the
 
-  //  sample.estimate
-  m_currentRoundStats.rtt[sockId ]             = TimeStep(Simulator::Now().GetTimeStep() ) - seqTs.GetReceiverTs();
+  //  sample.estimate .GetTimeStep() )  TimeStep(
+  m_currentRoundStats.rtt[sockId ]             = Simulator::Now() - seqTs.GetReceiverTs();
   m_currentRoundStats.RealForwardDelay[sockId] = seqTs.GetSenderTs() - seqTs.GetReceiverTs();
   m_currentRoundStats.RealReverseDelay[sockId] = Simulator::Now() - seqTs.GetSenderTs();
 
 
-  // If ForwardFast subflow not set and we saw the lowest seq nb
-  if( seqTs.GetSeq() == m_lowestRoundSeq && m_currentRoundStats.ForwardFastSubflow < 0)
+  // If ForwardFast subflow not set with lowest seq nb ackn
+  if( seqTs.GetSeq() >= m_lowestRoundSeq && m_currentRoundStats.ForwardFastSubflow < 0)
   {
     // Then we update the fast subflow id
     NS_LOG_INFO("Updated fastest subflow id [" << sockId << "]") ;
@@ -329,8 +331,8 @@ OWDHost::SamplingRTTRecv(int sockId, const SeqTsHeader& seqTs)
       );
 
     //! at this stage we can't compute a fast forward subflow
-
-    m_rttRoundStats.push_back(m_currentRoundStats);
+    RoundStats stats = FinishRttRound();
+    m_rttRoundStats.push_back(stats);
 
     //! if we finished enough rounds
     if( GetRoundNo() >= (int)m_sampleRTTmaxRounds)
@@ -398,6 +400,7 @@ RoundStats::RoundStats()
 {
     //!
   ForwardFastSubflow = -1;
+  ReverseFastSubflow = -1;
 //  RealReverseDeltaOWD;
 //  Time EstimatedForwardDeltaOWD = 0;
 //  Time RealForwardDeltaOWD = 0;
@@ -476,18 +479,30 @@ OWDHost::SampleRTTStart(void)
   NS_ASSERT_MSG( m_inflight == 0,"Can't start if packets in flight");
 
 
-  m_lowestRoundSeq += 2;
 
   // Send on all subflows a packet at the same time
   for(int i = 0 ; i < (int)m_sockets.size() ;++i)
   {
     // ts + 1 cause every element in a map must be unique
-    Send( m_sockets[i] , m_lowestRoundSeq + i,  Simulator::Now().GetTimeStep() + i);
+    Send( m_sockets[i] , m_lowestRoundSeq + i,  Simulator::Now().GetTimeStep() );
     ++m_inflight;
   }
 
   // Random number should be superior to any seq nb previously sent
 //  m_highestAcknowledgedAckInRound = m_inflight + 4000;
+}
+
+RoundStats
+OWDHost::FinishRttRound()
+{
+  NS_LOG_INFO("");
+    //! We finished a round => reset round
+//    NS_LOG_INFO("Rtt sampling: finished round " << GetRoundNo() << " (out of " << m_sampleRTTmaxRounds << "). "
+//      << "Subflow [" << sockId << "] forward delay looks shorter: "
+//      );
+//
+  m_lowestRoundSeq += 2;
+  return m_currentRoundStats;
 }
 
 //RttRoundStats::RttRoundStats()
@@ -501,15 +516,21 @@ OWDHost::DumpRttSamples(std::ostream& os) const
   //!
   NS_LOG_FUNCTION(this);
 
+  Time::Unit unit = Time::MS;
+
   //! Describes metadata
-  os << "#RoundId Rtt0 rtt1 id(Fastest)" << std::endl;
+  os << "#RoundId RealForwardDelay0/1 RealReverseDelay Rtt0/1 id(Fastest)" << std::endl;
   for(RoundStatsCollection::const_iterator it = m_rttRoundStats.begin(); it != m_rttRoundStats.end(); it++)
   {
     //!
 
     os << std::distance(m_rttRoundStats.begin(), it)
-      << "," << it->rtt[0].GetMicroSeconds()
-      << "," << it->rtt[1].GetMicroSeconds()
+      << "," << it->RealForwardDelay[0].To(unit)
+      << "," << it->RealForwardDelay[1].To(unit)
+      << "," << it->RealReverseDelay[0].To(unit)
+      << "," << it->RealReverseDelay[1].To(unit)
+      << "," << it->rtt[0].To(unit)
+      << "," << it->rtt[1].To(unit)
       << "," << it->ForwardFastSubflow
       << std::endl;
   }
@@ -584,7 +605,8 @@ OWDHost::Send(Ptr<Socket> sock, uint32_t seqNb
               , uint64_t ts
               )
 {
-  NS_LOG_FUNCTION(this << " Sending seq  [" << seqNb << "]");
+  //<< " Sending seq  [" << seqNb << "]"
+  NS_LOG_FUNCTION(this );
   NS_ASSERT(sock);
 
   SeqTsHeader seqTs;
