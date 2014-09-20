@@ -406,10 +406,10 @@ int main()
   nS->AddApplication( serverApp );
 
   clientApp->SetStartTime (Seconds (0.0));
-  clientApp->SetStopTime (Seconds (4.0));
+  clientApp->SetStopTime (Seconds (4000.0));
 
   serverApp->SetStartTime (Seconds (0.0));
-  serverApp->SetStopTime (Seconds (4.0));
+  serverApp->SetStopTime (Seconds (4000.0));
 
 
   // To debug, ms resolution is easier to read

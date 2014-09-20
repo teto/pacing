@@ -49,7 +49,7 @@ protected:
 
   Time m_arrivalTimeOnSlowPath;
 
-  Time m_estimatedForwardDeltaOwd;  //!< besoin réellement ?
+//  Time m_estimatedForwardDeltaOwd;  //!< besoin réellement ?
 
   const uint32_t m_probesInARound;  //!< Number of probes in a round (default 3);
   const uint32_t m_owdMaxRounds;  //!< How many times we sample the RTT before changing mode

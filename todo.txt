@@ -1,3 +1,6 @@
+reset le forwardFastsubflow at each round.
+Then average it
+
 
 can use dans ns3
 TimeMinMaxAvgTotalCalculator
