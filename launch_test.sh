@@ -1,4 +1,4 @@
-WITH_GDB=1
+WITH_GDB=0
 #NS_LOG="$NS_LOG:TraceHelper:PointToPointHelper"
 NS_LOG="OwdMainTest=*|prefix_all"
 NS_LOG="$NS_LOG:Ipv4L3Protocol=warn|error"
@@ -25,7 +25,7 @@ else
 	# you can add --out to redirect output to afile instead of standard output
 	#--verbose 
 	read -r  command <<-EOF
-		../../waf "--run owd $@"
+		../../waf --run='owd $@'
 		EOF
 
 fi

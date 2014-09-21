@@ -295,7 +295,9 @@ OWdClientBasic::FinishRound()
 
   m_currentRoundStats.rtt[id] = m_currentRoundStats.RealForwardDelay[id] + m_currentRoundStats.RealReverseDelay[id];
 
-
+  // computed by default (computation improved in a subsequent part of the algorithm)
+  m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()] = (m_currentRoundStats.rtt[id] - GetProbeDelay(0) )/(uint8_t)2;
+  m_currentRoundStats.EstimatedReverseDelay[ForwardSlowSubflowId()] = m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()];
 
   /* If all probes arrived afterreception of packet on slow path, then it means
   we waited too long before sending probes, ie we underestimated the ForwardDeltaOWD
