@@ -18,14 +18,14 @@ if [ $WITH_GDB -gt 0 ]; then
 	#COMMAND=
 	echo 'gdb'
 	read -r  command <<-'EOF'
-		../../waf --run owd --command-template="gdb -ex run --args %s "
+		../../waf --run owd --command-template="gdb -ex run --args %s $@"
 		EOF
 else
 	echo 'Without gdb'
 	# you can add --out to redirect output to afile instead of standard output
 	#--verbose 
 	read -r  command <<-EOF
-		../../waf --run owd
+		../../waf "--run owd $@"
 		EOF
 
 fi

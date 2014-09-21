@@ -235,12 +235,19 @@ int main()
 {
   // TODO command line helper to choose parameters (topology, transfer intervals, etc...)
   CommandLine cmd;
-//  cmd.AddValue ("useIpv6", "Use Ipv6", useV6);
+  int nbOfOwdRounds = 3;
+//  int forward0 = 30;
+  int forward1 = 30;
+  Time delayCtoS_1 = MilliSeconds(30);
+  Time delayCtoS_2 = MilliSeconds(10);
+  cmd.AddValue ("owdRounds", "Number of allowed OWD rounds", nbOfOwdRounds);
+  cmd.AddValue ("forward0", "OWD latency on forward path 0", delayCtoS_1 );
+  cmd.AddValue ("forward1", "OWD latency on forward path 1", delayCtoS_2 );
 //  cmd.Parse (argc, argv);
 
 
-  Time delayCtoS_1 = MilliSeconds(30);
-  Time delayCtoS_2 = MilliSeconds(10);
+//  Time delayCtoS_1 = MilliSeconds(30);
+
 
   Time delayStoC_1 = MilliSeconds(100);
   Time delayStoC_2 = MilliSeconds(200);
