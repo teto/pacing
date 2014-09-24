@@ -8,7 +8,10 @@ set style line 4 lt 3 lw 3 pt 3 lc rgb "blue"
 
 # Among available (pdfcairo, png, X11 )
 # if using png, set output eg set output "/tmp/myGraph.png"
-set terminal x11
+
+if (!exists("mattTerminal")) mattTerminal='x11'
+
+set terminal mattTerminal
 
 # Places of the legend
 set key right top
