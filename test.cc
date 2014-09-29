@@ -231,26 +231,33 @@ AddAsymetricLink(Ptr<Node> r1, Ptr<Node> r2, TimeValue r1r2Delay,TimeValue r2r1D
 In our XP rate does not matter
 
 **/
-int main()
+int main(int argc,char* argv[])
 {
   // TODO command line helper to choose parameters (topology, transfer intervals, etc...)
   CommandLine cmd;
   int nbOfOwdRounds = 3;
 //  int forward0 = 30;
-  int forward1 = 30;
+//  int forward1 = 30;
+
+  // forward delays
   Time delayCtoS_1 = MilliSeconds(30);
   Time delayCtoS_2 = MilliSeconds(10);
+
+  // Backward delays
+  Time delayStoC_1 = MilliSeconds(50);
+  Time delayStoC_2 = MilliSeconds(70);
+
   cmd.AddValue ("owdRounds", "Number of allowed OWD rounds", nbOfOwdRounds);
   cmd.AddValue ("forward0", "OWD latency on forward path 0", delayCtoS_1 );
   cmd.AddValue ("forward1", "OWD latency on forward path 1", delayCtoS_2 );
-//  cmd.Parse (argc, argv);
+  cmd.AddValue ("backward0", "OWD latency on backward path 0", delayStoC_1 );
+  cmd.AddValue ("backward1", "OWD latency on backward path 1", delayStoC_2 );
+  cmd.Parse (argc, argv);
 
 
 //  Time delayCtoS_1 = MilliSeconds(30);
 
 
-  Time delayStoC_1 = MilliSeconds(100);
-  Time delayStoC_2 = MilliSeconds(200);
 
 //  DifferentiatedPacingForOWDEstimation test;
 //  test.SetupSimulation();

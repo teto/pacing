@@ -296,8 +296,13 @@ OWdClientBasic::FinishRound()
   m_currentRoundStats.rtt[id] = m_currentRoundStats.RealForwardDelay[id] + m_currentRoundStats.RealReverseDelay[id];
 
   // computed by default (computation improved in a subsequent part of the algorithm)
-  m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()] = (m_currentRoundStats.rtt[id] - GetProbeDelay(0) )/(uint8_t)2;
-  m_currentRoundStats.EstimatedReverseDelay[ForwardSlowSubflowId()] = m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()];
+//  m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()] = (m_currentRoundStats.rtt[ForwardSlowSubflowId()] )/(uint8_t)2;
+//  m_currentRoundStats.EstimatedReverseDelay[ForwardSlowSubflowId()] = m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()];
+//
+//  // forward delays - GetProbeDelay(0)
+//  m_currentRoundStats.EstimatedForwardDelay[ForwardFastSubflowId()] = (m_currentRoundStats.rtt[ForwardFastSubflowId()]  )/(uint8_t)2;
+//  m_currentRoundStats.EstimatedReverseDelay[ForwardFastSubflowId()] = m_currentRoundStats.EstimatedForwardDelay[ForwardFastSubflowId()];
+
 
   /* If all probes arrived afterreception of packet on slow path, then it means
   we waited too long before sending probes, ie we underestimated the ForwardDeltaOWD
@@ -334,17 +339,47 @@ OWdClientBasic::FinishRound()
     NS_LOG_INFO("All probes arrived after packet on slow path");
     m_currentRoundStats.EstimatedForwardDeltaOWD = GetProbeDelay(0);
   }
+  // Probes were successful in framing slow packet
   else
   {
-      NS_LOG_INFO("Probing successfully cornered OWD values. Can now compute fast backward delay");
+    Time departureDelayBetweenFramingProbes = m_probes[m_arrivalTimeFirstProbeAfterSlowPath].DepartureTime - m_probes[m_arrivalTimeLastProbeBeforeSlowPath].DepartureTime;
+    Time arrivalDelayBetweenFramingProbes = m_arrivalTimeFirstProbeAfterSlowPath -m_arrivalTimeLastProbeBeforeSlowPath;
+
+    Time reverseDeltaOWD = m_slowPacket.first - m_arrivalTimeFirstProbeAfterSlowPath;
+
+    if(reverseDeltaOWD.IsNegative() )
+    {
+      m_currentRoundStats.ReverseFastSubflow = ForwardSlowSubflowId();
+    }
+    else
+    {
+      m_currentRoundStats.ReverseFastSubflow = ForwardFastSubflowId();
+    }
+
+    // TODO faire plusieurs cas selon si le FFP == BFP
+    if(m_currentRoundStats.ReverseFastSubflow == m_currentRoundStats.ForwardFastSubflow)
+    {
+      NS_LOG_INFO("FFP == BFP");
+
+    }
+    else
+    {
+      NS_LOG_INFO("FFP != BFP");
+    }
+
+    NS_LOG_INFO("Probing successfully cornered OWD values. Can now compute fast backward delay");
 
       //! Update estimate delta OWD
       // We take Departure time of last probe bfore slow packet +  1/3 * delay between this probe and the next one
       m_currentRoundStats.EstimatedForwardDeltaOWD =
-        (m_probes[m_arrivalTimeLastProbeBeforeSlowPath].DepartureTime-m_timeOfFirstSentPacket) +
+        (m_probes[m_arrivalTimeLastProbeBeforeSlowPath].DepartureTime-
+         //m_timeOfFirstSentPacket
+         m_slowPacket.second
+         ) +
           MilliSeconds(
                       0.3* (
-                            m_probes[m_arrivalTimeFirstProbeAfterSlowPath].DepartureTime - m_probes[m_arrivalTimeLastProbeBeforeSlowPath].DepartureTime
+//                            m_probes[m_arrivalTimeFirstProbeAfterSlowPath].DepartureTime - m_probes[m_arrivalTimeLastProbeBeforeSlowPath].DepartureTime
+                          departureDelayBetweenFramingProbes
                           ).GetMilliSeconds() );
 
       NS_LOG_INFO("Estimating ForwardOwdDelta to " << m_currentRoundStats.EstimatedForwardDeltaOWD);
@@ -352,23 +387,15 @@ OWdClientBasic::FinishRound()
 //      m_currentRoundStats.EstimatedForwardDeltaOWD
 //      if(m_timeOfFirstSentPacket
 
-      Time reverseDeltaOWD = m_slowPacket.first - m_arrivalTimeFirstProbeAfterSlowPath;
 
 
-      if(reverseDeltaOWD.IsNegative() )
-      {
-        m_currentRoundStats.ReverseFastSubflow = ForwardSlowSubflowId();
-
-      }
-      else
-      {
-        m_currentRoundStats.ReverseFastSubflow = ForwardFastSubflowId();
-      }
 
       NS_LOG_INFO("Estimating Reverse Fast Subflow to [" << m_currentRoundStats.ReverseFastSubflow << "]");
+      m_currentRoundStats.EstimatedReverseDeltaOWD = Abs(reverseDeltaOWD) ;// Abs
       NS_LOG_INFO("Estimating ReverseOwdDelta to " << m_currentRoundStats.EstimatedReverseDeltaOWD);
 
-      m_currentRoundStats.EstimatedReverseDeltaOWD = Abs(reverseDeltaOWD) ;// Abs
+
+
 
       // TODO now need to update the OWD estimations
       // TO do that we estimate the arrival time at the remote host
@@ -376,13 +403,14 @@ OWdClientBasic::FinishRound()
       // RTT/2
 
       // take the time arrival of the first packet that came back after slow packet arrived at remote host
-      Time halfSmallestRtt = Min( m_slowPacket.first, m_arrivalTimeFirstProbeAfterSlowPath)
+      Time halfSmallestRtt = Min( m_slowPacket.first, m_arrivalTimeFirstProbeAfterSlowPath+ arrivalDelayBetweenFramingProbes/(uint8_t)2 )
         // minus the time of the first packet sent on forward fast path that arrived
         // after packet on slow path
-          -m_probes[m_arrivalTimeFirstProbeAfterSlowPath].DepartureTime;
+          -(m_probes[m_arrivalTimeFirstProbeAfterSlowPath].DepartureTime + departureDelayBetweenFramingProbes/(uint8_t)2);
 
       // Finally we do RTT/2
-      halfSmallestRtt =  MilliSeconds( halfSmallestRtt.GetMilliSeconds() / 2 );
+      //.GetMilliSeconds()
+      halfSmallestRtt =  halfSmallestRtt / (uint8_t)2 ;
 
       m_currentRoundStats.EstimatedForwardDelay[ForwardFastSubflowId()] = halfSmallestRtt ;
       m_currentRoundStats.EstimatedReverseDelay[ForwardFastSubflowId()] = m_currentRoundStats.rtt[ForwardFastSubflowId()] - m_currentRoundStats.EstimatedForwardDelay[ForwardFastSubflowId()];
@@ -392,12 +420,17 @@ OWdClientBasic::FinishRound()
       //Prendre la moitie du temps entre 2 probes
       // Bug c pas forcément la probe 0
       //
+      m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()] = m_currentRoundStats.EstimatedForwardDeltaOWD + m_currentRoundStats.EstimatedForwardDelay[ForwardFastSubflowId()];
+
+      #if 0
       m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()] =
-        (m_probes[m_arrivalTimeLastProbeBeforeSlowPath].DepartureTime - m_slowPacket.second ) // Delay for probe before slow packet
-        +  MilliSeconds( (m_probes[m_arrivalTimeFirstProbeAfterSlowPath].DepartureTime - m_probes[m_arrivalTimeLastProbeBeforeSlowPath].DepartureTime ).GetMilliSeconds() /2 )  // choose average between corenering packets
+        // Delay  probe before slow packet
+        (m_probes[m_arrivalTimeLastProbeBeforeSlowPath].DepartureTime - m_slowPacket.second )
+        +  (m_probes[m_arrivalTimeFirstProbeAfterSlowPath].DepartureTime - m_probes[m_arrivalTimeLastProbeBeforeSlowPath].DepartureTime ) / (uint8_t)2   // choose average between corenering packets
         + m_currentRoundStats.EstimatedForwardDelay[ForwardFastSubflowId()];  // + estiamted forward time for fast path
 //      GetProbeDelay(0)
 //      m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()] = m_probes[m_arrivalTimeLastProbeBeforeSlowPath].DepartureTime  + m_currentRoundStats.EstimatedForwardDelay[ForwardFastSubflowId()];
+      #endif
       m_currentRoundStats.EstimatedReverseDelay[ForwardSlowSubflowId()] = m_currentRoundStats.rtt[ForwardSlowSubflowId()] -m_currentRoundStats.EstimatedForwardDelay[ForwardSlowSubflowId()];
 //      return m_currentRoundStats;
   }

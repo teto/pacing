@@ -510,10 +510,15 @@ OWDHost::DumpOwdSamples(std::ostream& os) const
 
     if(it->ForwardFastSubflow >= 0)
     {
-      os << "," << it->ForwardFastSubflow
-          << "," << it->EstimatedForwardDelay[0].To(unit)
-         << "," << it->EstimatedForwardDelay[1].To(unit)
-         << "," << it->EstimatedForwardDeltaOWD.To(unit);
+      os << "," << it->ForwardFastSubflow;
+      if(it->EstimatedForwardDelay[0].To(unit) > 0){
+        os << "," << it->EstimatedForwardDelay[0].To(unit)
+           << "," << it->EstimatedForwardDelay[1].To(unit);
+      }
+      else {
+        os << ",,";
+      }
+       os   << "," << it->EstimatedForwardDeltaOWD.To(unit);
     }
     else
     {

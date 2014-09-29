@@ -21,7 +21,7 @@ set key right top
 #set format x "%d/%m\n%H/%M"
 
 # Left/Right/Top/Bottom
-set offset graph 0.0, graph 0.1, graph 0.1, graph 0.
+set offset graph 0.0, graph 0.2, graph 0.1, graph 0.1
 #set bmargin 20
 #set lmargin {<margin>}
 #set rmargin {<margin>}
@@ -31,13 +31,15 @@ set autoscale xy
 set pointintervalbox 3
 set grid
 
-set xlabel 'Round number'
-set ylabel 'Time (ms)'
+set xlabel 'Round number' font ",16"
+set ylabel 'Time (ms)' font ",16"
 
+
+#set terminal enhanced font ',14'
 
 # set font on axis labels
-set xtics font ",20" 
-set ytics font ",20" 
+set xtics font ",16" 
+set ytics font ",16" 
 
 # set key font
 set key font ",14"
