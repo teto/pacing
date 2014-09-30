@@ -33,7 +33,11 @@ fi
 
 
 eval $command
-
+if [ $? -eq 0 ];
+then
+	echo "Updating graphs"
+	./draw_plots.sh 
+fi
 echo "Exported:\n$NS_LOG"
 echo "Executed Command:\n$command"
 

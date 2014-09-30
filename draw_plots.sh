@@ -3,4 +3,5 @@
 # if []
 terminal="png"
 gnuplot -e "mattTerminal='$terminal'"  owd.plot
+gnuplot -e "mattTerminal='$terminal'"  backward_owd.plot
 gnuplot -e "mattTerminal='$terminal'" delta.plot
