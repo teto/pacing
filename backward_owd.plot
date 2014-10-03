@@ -13,9 +13,9 @@ set style line 6 pointsize 3 linecolor "red"
 plot  \
 	"../../test.csv" every ::2 using 1:6 with linespoints pointtype 4 title "Real reverse OWD 1", \
 	"../../test.csv" using 1:15 with linespoints pointtype 8 title "Estimated reverse OWD 1", \
+	"../../test.csv" using 1:12 with linespoints pointtype 10 title "Half RTT on path 1", \
 	"../../test.csv" using 1:7 with linespoints pointtype 5 title "Real reverse OWD 2", \
 	"../../test.csv" using 1:16 with linespoints pointtype 9 title "Estimated reverse OWD 2", \
-	"../../test.csv" using 1:12 with linespoints pointtype 10 title "Half RTT on path 1", \
 	"../../test.csv" using 1:13 with linespoints pointtype 11 title "Half RTT on path 2"
 
 	#"../../test.csv" using 1:4 with linespoints pointtype 2 title "Real forward OWD 1", \
